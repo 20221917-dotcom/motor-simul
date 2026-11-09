@@ -83,3 +83,42 @@ pid.p.mode = 'PI'; pid.p.Ki = 40;                   // P → PI 로 바꾸면 �
 const dg2 = new B.Diagram(); dg2.load(JSON.parse(JSON.stringify(dg.toJSON())));
 console.log(JSON.stringify(run(dg2, 3.0)));""")
     assert r["rpm"] == pytest.approx(1000.0, abs=2.0)
+
+
+BLDC_PRELUDE = f"""
+global.BLDCEngine = require({json.dumps(str(RT / 'bldc_engine.js'))});
+"""
+BLDC_ENV = """
+env.bldc = { p: { Vdc: 48, R: 0.5, L: 0.2e-3, ke: 0.05, poles: 8, J: 1e-4, B: 1e-5 }, TL: 0.3, Ilim: 20 };
+function runB(dg, T) {
+  const r = new B.Runner(dg, env); const mo = dg.blocks.find(b => b.type === 'bldc');
+  let imax = 0;
+  for (let k = 0; k < Math.round(T / 0.005); k++) { r.advance(0.005, 1e-4); imax = Math.max(imax, Math.abs(r.out[mo.id][2])); }
+  return { rpm: r.out[mo.id][1], iT: r.out[mo.id][2], imax, msgs: r.check() };
+}
+"""
+
+
+def bldc_js(body):
+    out = subprocess.run([node, "-e", BLDC_PRELUDE + PRELUDE + BLDC_ENV + body], capture_output=True,
+                         text=True, check=True, timeout=180)
+    return json.loads(out.stdout)
+
+
+def test_bldc_double_loop_template():
+    r = bldc_js("""
+const dg = new B.Diagram(); B.templates(env)["BLDC: 속도·전류 이중 루프 (PI-PI) + E 피드포워드"](dg);
+console.log(JSON.stringify(runB(dg, 0.4)));""")
+    assert r["msgs"] == []
+    assert r["rpm"] == pytest.approx(2800, abs=15)        # 0.6·Vdc/2ke = 2750 → 100 rpm 단위 반올림
+    assert r["imax"] < 20 * 1.3
+
+
+def test_bldc_templates_run():
+    names = bldc_js("console.log(JSON.stringify(Object.keys(B.templates(env)).filter(n => n.startsWith('BLDC'))));")
+    assert len(names) == 3
+    for n in names:
+        r = bldc_js(f"""
+const dg = new B.Diagram(); B.templates(env)[{json.dumps(n)}](dg);
+console.log(JSON.stringify(runB(dg, 0.1)));""")
+        assert r["msgs"] == [], (n, r["msgs"])

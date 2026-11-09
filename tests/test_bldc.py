@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from motors import registry
-from motors.ac.bldc import BLDCInputs, COMMUTATION, hall_code, trap
+from motors.bldc.model import BLDCInputs, COMMUTATION, hall_code, trap
 
 M = registry.get("bldc")
 

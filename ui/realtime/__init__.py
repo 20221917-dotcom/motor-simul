@@ -67,9 +67,10 @@ def render(html, height):
     components.html(html, height=height, scrolling=False)
 
 
-def editor_html(motors, default_motor, ctrl):
-    """제어 블록 편집기. motors: {이름: {type, sigma, p, V, Vf, Rfx}}, ctrl: 템플릿 게인 계산용."""
-    cfg = {"motors": motors, "defaultMotor": default_motor, "ctrl": ctrl}
+def editor_html(motors, default_motor, ctrl, bldc=None):
+    """제어 블록 편집기. motors: DC 전동기 {이름: {type, sigma, p, V, Vf, Rfx}},
+    ctrl: DC 템플릿 게인 계산용, bldc: {p, TL, Ilim} (BLDC 블록·템플릿용)."""
+    cfg = {"motors": motors, "defaultMotor": default_motor, "ctrl": ctrl, "bldc": bldc}
     return _build("editor.html", cfg)
 
 

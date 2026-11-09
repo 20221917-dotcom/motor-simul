@@ -21,7 +21,7 @@ ASSUMPTIONS = ("**모델 가정** · 3상 Y결선, 상 저항·인덕턴스 동�
 @st.cache_data(max_entries=20, show_spinner="3상 파형 계산 중…")
 def _sim(params_items, u_items, t_end, events, record_dt):
     m = registry.get("bldc")(dict(params_items))
-    from motors.ac.bldc import BLDCInputs
+    from motors.bldc.model import BLDCInputs
     return m.simulate_fixed(BLDCInputs(**dict(u_items)), t_end, h=1e-5,
                             events=[(t, dict(c)) for t, c in events], record_dt=record_dt)
 
@@ -55,6 +55,38 @@ def tab_principle(m, params):
   그 사이 토크가 출렁입니다. L 이 크거나 속도가 빠를수록 커집니다.
 - **홀 센서 위치 오차**: 슬라이더로 센서를 옮기면 정류가 이르거나 늦어져 토크 리플이 커지고 같은 전압에서 속도·효율이 변합니다.
 - **보라 화살표**(고정자 자계)가 회전자 N 방향보다 **60°~120° 앞서** 있어야 회전 방향으로 끌어당기는 토크가 납니다 (90° 에서 최대).
+""")
+    st.divider()
+    _structure_section(m, params)
+
+
+def _structure_section(m, params):
+    st.markdown("#### BLDC 구조와 특징 · DC 전동기와 비교")
+    c1, c2 = st.columns([3, 2])
+    with c1:
+        st.markdown(f"""
+| 항목 | DC 전동기 (타여자·분권) | BLDC 전동기 |
+|---|---|---|
+| 자계를 만드는 쪽 | 고정자 계자 권선 (또는 영구자석) | **회전자 영구자석** ({params['poles']:.0f}극) |
+| 전류가 흐르는 쪽 | 회전자 (전기자) | **고정자 3상 권선** |
+| 전류 방향 바꾸기 | 정류자 + 브러시 (기계식) | **홀 센서 + 인버터 스위치 6개** (전자식) |
+| 토크 식 | Te = Kφ·Ia | Te = 2ke·I (두 상 도통) |
+| 역기전력 | E = Kφ·ω | 선간 2ke·ω (평탄 구간) |
+| 속도 제어 | 전기자 전압 | PWM 듀티 (d·Vdc) |
+| 토크 리플 원인 | 정류자편 수 | 6스텝 **정류 리플** (60° 마다) |
+| 유지보수 | 브러시 마모·불꽃 | 브러시 없음, 수명 김 |
+""")
+    with c2:
+        st.markdown(f"""
+**이 전동기 값으로 보면**
+- 등가 토크 상수 K = 2ke = **{m.K:.3f} N·m/A**
+- 무부하 속도 ≈ Vdc / 2ke = **{params['Vdc'] / m.K * 60 / (2 * np.pi):.0f} rpm**
+- 기동 전류 = Vdc / 2R = **{params['Vdc'] / (2 * params['R']):.1f} A**
+- 선간 전기 시정수 L/R = **{params['L'] / params['R'] * 1000:.2f} ms**
+- 기계 시정수 J·2R/K² = **{params['J'] * 2 * params['R'] / m.K ** 2 * 1000:.1f} ms**
+
+평균적으로는 **DC 전동기와 같은 식**으로 움직입니다 (② 정상상태 탭).
+차이는 60° 마다 일어나는 정류 과정과 그때 생기는 토크 리플입니다.
 """)
 
 
@@ -202,6 +234,8 @@ def tab_control(m, params):
     st.caption("DC 전동기 제어와 같은 이중 루프입니다. 전류 루프 플랜트가 두 상 직렬(2R, 2L)이라 "
                "추천 게인은 Kpi = ωci·2L, Kii = ωci·2R 입니다. 토크 전류는 상전류와 역기전력 모양으로 계산한 Te/(2ke) 를 씁니다.")
     realtime.render(realtime.bldc_control_html(params), height=860)
+    st.info("🧩 제어 구조를 직접 바꿔 보려면 왼쪽 메뉴 **제어 실습 → 제어 블록 편집기**에서 "
+            "'BLDC:' 템플릿을 불러와 블록을 바꿔 보세요 (P/PI/PID, 전류 루프만, 개루프 등).")
     with st.expander("해 볼 실험", expanded=False):
         st.markdown("""
 1. **기동**: 처음부터 다시 → 전류가 I_lim 에 붙은 채 일정하게 가속합니다.

@@ -18,6 +18,7 @@ def get(key: str) -> type:
 def _load_builtin():
     # 모듈을 import 하면 @register 데코레이터가 등록을 수행한다
     import motors.dc  # noqa: F401
+    import motors.bldc  # noqa: F401
     import motors.ac  # noqa: F401
 
 

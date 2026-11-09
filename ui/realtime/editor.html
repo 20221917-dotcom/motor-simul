@@ -64,6 +64,7 @@ dialog textarea { width: 100%; height: 300px; font-family: monospace; font-size:
   <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:6px"><button id="imp" class="primary">가져오기</button><button id="close">닫기</button></div></dialog>
 <script>/*ENGINE*/</script>
 <script>/*CHARTS*/</script>
+<script>/*BLDC*/</script>
 <script>/*BLOCKS*/</script>
 <script>
 const CFG = /*CONFIG*/;
@@ -73,7 +74,7 @@ const { DEF, Diagram, Runner, insOf, outsOf, titleOf, RPM } = Blocks;
 DEF.motor.params.kind.options = Object.keys(CFG.motors);
 DEF.motor.params.kind.v = CFG.defaultMotor;
 DEF.chopper.params.Vdc.v = CFG.ctrl.V;
-const env = { motors: CFG.motors, defaultMotor: CFG.defaultMotor, ctrl: CFG.ctrl };
+const env = { motors: CFG.motors, defaultMotor: CFG.defaultMotor, ctrl: CFG.ctrl, bldc: CFG.bldc };
 const TPL = Blocks.templates(env);
 const STORE = "dcmotor-block-diagram-v1";
 const dg = new Diagram();
@@ -231,7 +232,7 @@ const PALETTE = [
   ["신호원", [["const", "상수", {}], ["const", "속도 지령 (rpm)", { value: 1000, rpm: true }], ["step", "계단", {}], ["square", "사각파", {}], ["sine", "사인파", {}]]],
   ["연산", [["sum", "합산점 Σ (+−)", {}], ["sum", "합산점 Σ (++)", { signs: "++" }], ["gain", "게인 K", {}], ["limit", "리미터", {}], ["integ", "적분기 1/s", {}], ["lpf", "1차 지연 필터", {}]]],
   ["제어기", [["pid", "P 제어기", { mode: "P", Ki: 0 }], ["pid", "PI 제어기", { mode: "PI" }], ["pid", "PID 제어기", { mode: "PID", Kd: 0.01 }]]],
-  ["전력·전동기", [["chopper", "초퍼", {}], ["motor", "DC 전동기", {}]]],
+  ["전력·전동기", [["chopper", "초퍼 (DC용)", {}], ["motor", "DC 전동기", {}], ["bldc", "BLDC 전동기 (인버터 포함)", {}]]],
   ["관측", [["scope", "스코프", {}], ["display", "숫자 표시", {}]]],
 ];
 function freeSpot(type, p) {
@@ -410,11 +411,14 @@ function frame(now) {
       const v = runner.inputs(b)[0];
       dispText[b.id].textContent = v === undefined ? "—" : `${(+v).toPrecision(4)} ${b.p.unit || ""}`;
     }
-    const mo = dg.blocks.find((b) => b.type === "motor");
+    const mo = dg.blocks.find((b) => b.type === "motor" || b.type === "bldc");
     const o = mo && runner.out[mo.id];
-    $("ro").innerHTML = `<span>시뮬레이션 시각 <b>${runner.t.toFixed(3)} s</b></span>` +
-      (o ? `<span>${titleOf(mo)}: n <b>${o[1].toFixed(1)} rpm</b></span><span>Ia <b>${o[2].toFixed(2)} A</b></span>` +
-           `<span>E <b>${o[3].toFixed(1)} V</b></span><span>Te <b>${o[4].toFixed(2)} N·m</b></span>` : "");
+    let txt = `<span>시뮬레이션 시각 <b>${runner.t.toFixed(3)} s</b></span>`;
+    if (o && mo.type === "motor") txt += `<span>${titleOf(mo)}: n <b>${o[1].toFixed(1)} rpm</b></span><span>Ia <b>${o[2].toFixed(2)} A</b></span>` +
+      `<span>E <b>${o[3].toFixed(1)} V</b></span><span>Te <b>${o[4].toFixed(2)} N·m</b></span>`;
+    if (o && mo.type === "bldc") txt += `<span>${titleOf(mo)}: n <b>${o[1].toFixed(0)} rpm</b></span><span>토크 전류 <b>${o[2].toFixed(2)} A</b></span>` +
+      `<span>ia <b>${o[3].toFixed(2)} A</b></span><span>Te <b>${o[6].toFixed(3)} N·m</b></span>`;
+    $("ro").innerHTML = txt;
   }
   requestAnimationFrame(frame);
 }

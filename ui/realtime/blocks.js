@@ -171,6 +171,30 @@
         if (ctx.diodeFor(b) && s.sim.s[0] < 0) s.sim.s[0] = 0;   // 1상한 초퍼: 전류 단방향
       },
     },
+    bldc: {
+      cat: "전력·전동기", name: "BLDC 전동기", ins: ["v*", "TL"], outs: ["ω", "n", "iT", "ia", "ib", "ic", "Te"], ft: false,
+      outUnits: ["rad/s", "rpm", "A", "A", "A", "A", "N·m"],
+      params: {
+        TL: { label: "부하 토크 (TL 입력이 없을 때)", type: "number", v: 0, unit: "N·m" },
+        friction: { label: "마찰형 부하 (회전 반대 방향)", type: "bool", v: true },
+        hall: { label: "홀 센서 위치 오차", type: "number", v: 0, unit: "° 전기각" },
+      },
+      desc: "6스텝 인버터(홀 센서 120° 통전, 평균값 PWM)가 들어 있는 BLDC 전동기입니다. 입력 v* [V] 는 " +
+            "−Vdc ~ +Vdc 로 잘리고 듀티 d = v*/Vdc 가 됩니다. 출력: ω [rad/s], n [rpm], " +
+            "iT = Te/(2ke) 토크 전류 [A], 상전류 ia·ib·ic [A], Te [N·m]. 파라미터는 BLDC 시뮬레이터 페이지 값입니다.",
+      text: (b) => `6스텝  TL=${b.p.TL}${+b.p.hall ? `  홀 ${b.p.hall}°` : ""}`,
+      init: (b, env) => {
+        if (!env.bldc || typeof BLDCEngine === "undefined") throw new Error("BLDC 파라미터가 없습니다");
+        return { sim: new BLDCEngine.BLDCSim(env.bldc.p) };
+      },
+      out: (b, s) => { const o = s.sim.out(); return [o.w, o.w * RPM, o.iT, o.ia, o.ib, o.ic, o.Te]; },
+      update: (b, s, u, h, t, env) => {
+        const Vdc = env.bldc.p.Vdc, TL = u[1] === undefined ? +b.p.TL : u[1];
+        s.sim.set({ duty: clip(num(u[0], 0) / Vdc, -1, 1), TL, friction: !!b.p.friction, hallOffset: (+b.p.hall || 0) * Math.PI / 180 });
+        const n = Math.max(1, Math.ceil(h / 1e-5 - 1e-9));   // 인버터 정류를 잡도록 10 µs 이하로 나눔
+        for (let i = 0; i < n; i++) s.sim.step(h / n);
+      },
+    },
     scope: {
       cat: "관측", name: "스코프", ins: ["a", "b", "c"], outs: [], ft: true, sink: true,
       params: { name: { label: "그래프 제목", type: "text", v: "스코프" },
@@ -294,8 +318,8 @@
       const msgs = [];
       if (this.loopIds.length) msgs.push("⚠️ 대수 루프: " + this.loopIds.map((id) => titleOf(this.dg.get(id))).join(", ") +
         " 가 적분 요소 없이 고리를 이룹니다. 그 블록들의 출력은 0 으로 계산합니다.");
-      for (const b of this.dg.blocks) if (b.type === "motor" && !this.inWire[`${b.id}:0`])
-        msgs.push(`ℹ️ ${titleOf(b)} 의 va 입력이 연결되지 않아 전압 0 으로 계산합니다.`);
+      for (const b of this.dg.blocks) if ((b.type === "motor" || b.type === "bldc") && !this.inWire[`${b.id}:0`])
+        msgs.push(`ℹ️ ${titleOf(b)} 의 ${insOf(b)[0]} 입력이 연결되지 않아 전압 0 으로 계산합니다.`);
       return msgs;
     }
   }
@@ -404,6 +428,49 @@
       m.w(mo, 0, it, 0); m.w(it, 0, s0, 1); m.w(mo, 0, s1, 1); m.w(mo, 2, s2, 1);
       m.w(ref, 0, sc1, 0); m.w(it, 0, sc1, 1); m.w(lw, 0, sc2, 0); m.w(mo, 0, sc2, 1); m.w(pw, 0, sc3, 0); m.w(mo, 2, sc3, 1);
     };
+    if (env.bldc) {
+      const B = env.bldc, bp = B.p, KB = 2 * bp.ke, gb = BLDCEngine.recommendedGains(bp, 3000, 150);
+      const IlB = B.Ilim, VB = bp.Vdc, wRpm = Math.round(0.6 * VB / KB * RPM / 100) * 100;
+      T["BLDC: 속도·전류 이중 루프 (PI-PI) + E 피드포워드"] = (dg) => {
+        const m = mk(dg);
+        const ref = m.add("const", c(0), 40, { value: wRpm, rpm: true }, "속도 지령 ω*");
+        const s1 = m.add("sum", c(1), 40, { signs: "+-" }, "속도 오차");
+        const pw = m.add("pid", c(2), 40, { mode: "PI", Kp: r4(gb.Kpw), Ki: r4(gb.Kiw), lo: -IlB, hi: IlB }, "속도 PI → I*");
+        const s2 = m.add("sum", c(3), 40, { signs: "+-" }, "전류 오차");
+        const pi = m.add("pid", c(4), 40, { mode: "PI", Kp: r4(gb.Kpi), Ki: r4(gb.Kii), lo: -VB, hi: VB }, "전류 PI");
+        const s3 = m.add("sum", c(5), 40, { signs: "++" }, "+ E 보상");
+        const mo = m.add("bldc", c(6), 40, {}, "BLDC");
+        const ff = m.add("gain", c(4), 230, { K: r4(KB) }, "E 피드포워드 2ke");
+        const tl = m.add("step", c(5), 330, { t0: 0.1, v0: 0, v1: +(+B.TL).toPrecision(3) }, "부하 토크 TL");
+        const sc1 = m.add("scope", c(0), 330, { name: "속도", rpm: true });
+        const sc2 = m.add("scope", c(1), 330, { name: "전류 [A]" });
+        const sc3 = m.add("scope", c(2), 330, { name: "토크 [N·m]" });
+        m.w(ref, 0, s1, 0); m.w(s1, 0, pw, 0); m.w(pw, 0, s2, 0); m.w(s2, 0, pi, 0); m.w(pi, 0, s3, 0); m.w(s3, 0, mo, 0);
+        m.w(mo, 0, s1, 1); m.w(mo, 2, s2, 1); m.w(mo, 0, ff, 0); m.w(ff, 0, s3, 1); m.w(tl, 0, mo, 1);
+        m.w(ref, 0, sc1, 0); m.w(mo, 0, sc1, 1); m.w(pw, 0, sc2, 0); m.w(mo, 2, sc2, 1); m.w(mo, 3, sc2, 2); m.w(mo, 6, sc3, 0); m.w(tl, 0, sc3, 1);
+      };
+      T["BLDC: 전류 제어만 (전류 PI)"] = (dg) => {
+        const m = mk(dg);
+        const ref = m.add("square", c(0), 40, { amp: +(0.5 * IlB).toPrecision(2), period: 0.05, offset: 0 }, "전류 지령 I*");
+        const s = m.add("sum", c(1), 40, { signs: "+-" }, "전류 오차");
+        const pi = m.add("pid", c(2), 40, { mode: "PI", Kp: r4(gb.Kpi), Ki: r4(gb.Kii), lo: -VB, hi: VB }, "전류 PI");
+        const mo = m.add("bldc", c(3), 40, {}, "BLDC");
+        const sc1 = m.add("scope", c(1), 270, { name: "전류 [A]" });
+        const sc2 = m.add("scope", c(3), 270, { name: "속도", rpm: true });
+        m.w(ref, 0, s, 0); m.w(s, 0, pi, 0); m.w(pi, 0, mo, 0); m.w(mo, 2, s, 1);
+        m.w(ref, 0, sc1, 0); m.w(mo, 2, sc1, 1); m.w(mo, 3, sc1, 2); m.w(mo, 0, sc2, 0);
+      };
+      T["BLDC: 개루프 (v* = 2ke·ω*)"] = (dg) => {
+        const m = mk(dg);
+        const ref = m.add("const", c(0), 40, { value: wRpm, rpm: true }, "속도 지령 ω*");
+        const k = m.add("gain", c(1), 40, { K: r4(KB) }, "2ke");
+        const mo = m.add("bldc", c(2), 40, { TL: +(+B.TL).toPrecision(3) }, "BLDC");
+        const sc1 = m.add("scope", c(1), 270, { name: "속도", rpm: true });
+        const sc2 = m.add("scope", c(3), 270, { name: "상전류 [A]" });
+        m.w(ref, 0, k, 0); m.w(k, 0, mo, 0); m.w(ref, 0, sc1, 0); m.w(mo, 0, sc1, 1);
+        m.w(mo, 3, sc2, 0); m.w(mo, 4, sc2, 1); m.w(mo, 5, sc2, 2);
+      };
+    }
     T["빈 화면"] = () => {};
     return T;
   }
