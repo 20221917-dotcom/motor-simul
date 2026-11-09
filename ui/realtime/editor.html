@@ -1,0 +1,422 @@
+<!doctype html><html><head><meta charset="utf-8"><style>/*CSS*/
+.tb { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 4px 0 8px; font-size: 13px; }
+.tb select, .tb button { font-size: 13px; }
+.tb select { padding: 4px 6px; border: 1px solid #ccc; border-radius: 6px; }
+.sep { width: 1px; height: 24px; background: #ddd; }
+.main { display: grid; grid-template-columns: 140px 1fr; gap: 8px; }
+.lower { display: grid; grid-template-columns: 300px 1fr; gap: 12px; align-items: start; }
+.pal { display: flex; flex-direction: column; gap: 4px; max-height: 470px; overflow-y: auto; }
+.pal h5 { margin: 6px 0 2px; font-size: 12px; color: #666; }
+.pal button { text-align: left; padding: 5px 8px; font-size: 12.5px; }
+.cvwrap { position: relative; border: 1px solid #ddd; border-radius: 10px; overflow: auto; height: 470px; background:
+  radial-gradient(circle, #e3e3e3 1px, transparent 1px) 0 0 / 20px 20px; }
+svg { display: block; user-select: none; touch-action: none; }
+.props { border: 1px solid #ddd; border-radius: 10px; padding: 10px; font-size: 13px; max-height: 640px; overflow-y: auto; }
+.zoom { position: sticky; float: right; top: 6px; right: 6px; display: flex; gap: 4px; z-index: 2; margin: 6px; }
+.zoom button { padding: 2px 9px; background: rgba(255,255,255,0.9); }
+.props h4 { margin: 0 0 4px; } .props .d { color: #555; font-size: 12px; margin: 4px 0 8px; line-height: 1.45; }
+.props .f { margin: 6px 0; } .props .f label { display: block; color: #555; margin-bottom: 2px; }
+.props input[type=number], .props input[type=text], .props select { width: 100%; padding: 4px 6px; border: 1px solid #ccc; border-radius: 6px; }
+.props .chk { margin: 6px 0; }
+.status { font-size: 12.5px; color: #444; padding: 6px 2px; min-height: 22px; }
+.status .w { color: #b45309; }
+.scopes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; }
+@media (max-width: 900px) { .main, .lower { grid-template-columns: 1fr; } .scopes { grid-template-columns: 1fr; } }
+.scopes canvas { height: 190px; }
+.blk rect.body { stroke: #7a8796; stroke-width: 1.2; }
+.blk.sel rect.body { stroke: #d9534f; stroke-width: 2.5; }
+.blk text { font-family: system-ui, sans-serif; pointer-events: none; }
+.port { cursor: crosshair; } .port:hover { r: 7; }
+.wire { fill: none; stroke: #4b5563; stroke-width: 1.8; pointer-events: none; }
+.wire.sel { stroke: #d9534f; stroke-width: 3; }
+.whit { fill: none; stroke: transparent; stroke-width: 12; cursor: pointer; }
+dialog { width: min(700px, 90vw); border: 1px solid #ccc; border-radius: 10px; }
+dialog textarea { width: 100%; height: 300px; font-family: monospace; font-size: 12px; }
+</style></head><body>
+<div class="tb">
+  <select id="tpl"></select><button id="loadTpl">템플릿 불러오기</button>
+  <span class="sep"></span>
+  <button id="run" class="primary">⏸ 일시정지</button>
+  <button id="reset" class="primary">⟲ 처음부터 다시</button>
+  <label>재생 속도 <select id="spd"><option value="0.05">1/20</option><option value="0.1">1/10</option>
+    <option value="0.25" selected>1/4</option><option value="0.5">1/2</option><option value="1">실시간</option></select></label>
+  <label>화면 폭 <select id="win"><option value="0.5">0.5 s</option><option value="1">1 s</option>
+    <option value="2" selected>2 s</option><option value="4">4 s</option></select></label>
+  <label>계산 주기 <select id="ts"><option value="5e-5">50 µs</option><option value="1e-4" selected>100 µs</option>
+    <option value="2e-4">200 µs</option><option value="5e-4">500 µs</option></select></label>
+  <span class="sep"></span>
+  <button id="del">선택 삭제</button><button id="clear">모두 지우기</button>
+  <button id="exp">내보내기/가져오기</button>
+</div>
+<div class="main">
+  <div class="pal" id="pal"></div>
+  <div class="cvwrap" id="wrap">
+    <div class="zoom"><button id="zout" title="축소">－</button><button id="zin" title="확대">＋</button><button id="zfit">화면 맞춤</button></div>
+    <svg id="cv"><g id="gw"></g><g id="gb"></g><path id="tmp" class="wire" style="stroke-dasharray:5 4; display:none"/></svg></div>
+</div>
+<div class="status" id="status"></div>
+<div class="lower">
+  <div class="props" id="props"></div>
+  <div><div class="readout" id="ro"></div><div class="scopes" id="scopes"></div></div>
+</div>
+<dialog id="dlg"><b>다이어그램 JSON</b> — 복사해서 저장하거나, 붙여 넣고 [가져오기] 를 누르세요.
+  <textarea id="json"></textarea>
+  <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:6px"><button id="imp" class="primary">가져오기</button><button id="close">닫기</button></div></dialog>
+<script>/*ENGINE*/</script>
+<script>/*CHARTS*/</script>
+<script>/*BLOCKS*/</script>
+<script>
+const CFG = /*CONFIG*/;
+const $ = (id) => document.getElementById(id);
+const SVGNS = "http://www.w3.org/2000/svg";
+const { DEF, Diagram, Runner, insOf, outsOf, titleOf, RPM } = Blocks;
+DEF.motor.params.kind.options = Object.keys(CFG.motors);
+DEF.motor.params.kind.v = CFG.defaultMotor;
+DEF.chopper.params.Vdc.v = CFG.ctrl.V;
+const env = { motors: CFG.motors, defaultMotor: CFG.defaultMotor, ctrl: CFG.ctrl };
+const TPL = Blocks.templates(env);
+const STORE = "dcmotor-block-diagram-v1";
+const dg = new Diagram();
+const runner = new Runner(dg, env);
+let sel = null;          // {kind: "block"|"wire", id}
+const CATCOL = { "신호원": "#fff3d6", "연산": "#eef4fb", "제어기": "#e6f5ec", "전력·전동기": "#fdf0e6", "관측": "#f1ecfa" };
+
+// ---------------- 저장 ----------------
+function save() { try { localStorage.setItem(STORE, JSON.stringify(dg.toJSON())); } catch (e) {} }
+function loadSaved() { try { const s = localStorage.getItem(STORE); if (s) { dg.load(JSON.parse(s)); return true; } } catch (e) {} return false; }
+
+// ---------------- 블록 모양 ----------------
+const BW = 118;
+const geo = (b) => {
+  const ni = insOf(b).length, no = outsOf(b).length;
+  const H = Math.max(50, 34 + 17 * Math.max(ni, no));
+  const py = (i, n) => 24 + (H - 24) * (i + 0.5) / n;
+  return { H, inY: (i) => py(i, ni), outY: (i) => py(i, no) };
+};
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e); return e;
+}
+const dispText = {};
+function render(opts) {
+  const withProps = !opts || opts.props !== false;
+  const gb = $("gb"); gb.innerHTML = "";
+  for (const b of dg.blocks) {
+    const d = DEF[b.type], G = geo(b);
+    const g = el("g", { class: "blk" + (sel && sel.kind === "block" && sel.id === b.id ? " sel" : ""), transform: `translate(${b.x},${b.y})` }, gb);
+    g.dataset.id = b.id;
+    el("rect", { class: "body", width: BW, height: G.H, rx: 8, fill: CATCOL[d.cat] || "#fff" }, g);
+    el("rect", { width: BW, height: 20, rx: 8, fill: "rgba(0,0,0,0.06)" }, g);
+    const t = el("text", { x: 7, y: 14, "font-size": 11, "font-weight": 600, fill: "#222" }, g); t.textContent = titleOf(b).slice(0, 17);
+    const s = el("text", { x: BW / 2, y: G.H - 7, "font-size": 9.5, "text-anchor": "middle", fill: "#444" }, g);
+    s.textContent = (d.text(b) || "").slice(0, 24);
+    if (b.type === "display") {
+      const v = el("text", { x: BW / 2, y: 40, "font-size": 15, "font-weight": 700, "text-anchor": "middle", fill: "#b91c1c" }, g);
+      dispText[b.id] = v;
+    }
+    insOf(b).forEach((nm, i) => {
+      const c = el("circle", { class: "port in", cx: 0, cy: G.inY(i), r: 5.5, fill: "#fff", stroke: "#334155", "stroke-width": 1.5 }, g);
+      c.dataset.b = b.id; c.dataset.p = i; c.dataset.dir = "in";
+      const lt = el("text", { x: 8, y: G.inY(i) + 4, "font-size": 10, fill: "#334155" }, g); lt.textContent = nm;
+    });
+    outsOf(b).forEach((nm, i) => {
+      const c = el("circle", { class: "port out", cx: BW, cy: G.outY(i), r: 5.5, fill: "#334155" }, g);
+      c.dataset.b = b.id; c.dataset.p = i; c.dataset.dir = "out";
+      const lt = el("text", { x: BW - 8, y: G.outY(i) + 4, "font-size": 10, "text-anchor": "end", fill: "#334155" }, g); lt.textContent = nm;
+    });
+  }
+  renderWires();
+  if (!drag) layoutSvg(false);
+  if (withProps) renderProps();
+  renderScopes(); renderStatus(); save();
+}
+function portPos(bid, p, dir) {
+  const b = dg.get(bid); const G = geo(b);
+  return dir === "out" ? [b.x + BW, b.y + G.outY(p)] : [b.x, b.y + G.inY(p)];
+}
+function wirePath(x1, y1, x2, y2, k) {
+  k = k || 0;
+  if (x2 > x1 + 30) { const dx = Math.max(30, (x2 - x1) / 2); return `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`; }
+  // 되먹임 선: 오른쪽으로 나와 아래로 돌아 왼쪽 입력으로 (선마다 간격을 달리함)
+  const yb = Math.max(y1, y2) + 26 + 9 * (k % 6), xo = 12 + 5 * (k % 4);
+  return `M${x1},${y1} H${x1 + xo} V${yb} H${x2 - xo} V${y2} H${x2}`;
+}
+function renderWires() {
+  const gw = $("gw"); gw.innerHTML = "";
+  let back = 0;
+  dg.wires.forEach((w, i) => {
+    const [x1, y1] = portPos(w.from.b, w.from.p, "out"), [x2, y2] = portPos(w.to.b, w.to.p, "in");
+    const d = wirePath(x1, y1, x2, y2, x2 > x1 + 30 ? 0 : back++);
+    el("path", { class: "wire" + (sel && sel.kind === "wire" && sel.id === i ? " sel" : ""), d }, gw);
+    const hit = el("path", { class: "whit", d }, gw); hit.dataset.w = i;
+  });
+}
+
+// ---------------- 확대 / 축소 ----------------
+let zoom = 1;
+function layoutSvg(fit) {
+  let W = 600, H = 300;
+  for (const b of dg.blocks) { W = Math.max(W, b.x + BW + 60); H = Math.max(H, b.y + geo(b).H + 90); }
+  const wr = $("wrap");
+  if (fit) zoom = Math.min(1.2, (wr.clientWidth - 14) / W);   // 폭에 맞추고 세로는 스크롤
+  zoom = Math.max(0.35, Math.min(2, zoom));
+  const svg = $("cv");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("width", Math.round(W * zoom)); svg.setAttribute("height", Math.round(H * zoom));
+}
+$("zin").onclick = () => { zoom *= 1.2; layoutSvg(false); };
+$("zout").onclick = () => { zoom /= 1.2; layoutSvg(false); };
+$("zfit").onclick = () => layoutSvg(true);
+
+// ---------------- 마우스 / 터치 ----------------
+const svg = $("cv");
+function svgPt(ev) { const p = svg.createSVGPoint(); p.x = ev.clientX; p.y = ev.clientY; return p.matrixTransform(svg.getScreenCTM().inverse()); }
+let drag = null;
+svg.addEventListener("pointerdown", (ev) => {
+  const t = ev.target, pt = svgPt(ev);
+  if (t.classList.contains("port") && t.dataset.dir === "out") {
+    drag = { kind: "wire", b: +t.dataset.b, p: +t.dataset.p }; $("tmp").style.display = "";
+  } else if (t.dataset.w !== undefined) {
+    sel = { kind: "wire", id: +t.dataset.w }; render();
+  } else {
+    const g = t.closest(".blk");
+    if (g) {
+      const b = dg.get(+g.dataset.id);
+      sel = { kind: "block", id: b.id }; drag = { kind: "move", b, dx: pt.x - b.x, dy: pt.y - b.y, g };
+      render(); drag.g = document.querySelector(`.blk[data-id="${b.id}"]`);
+    } else { sel = null; render(); }
+  }
+  svg.setPointerCapture(ev.pointerId);
+});
+svg.addEventListener("pointermove", (ev) => {
+  if (!drag) return;
+  const pt = svgPt(ev);
+  if (drag.kind === "move") {
+    drag.b.x = Math.max(0, Math.round((pt.x - drag.dx) / 5) * 5); drag.b.y = Math.max(0, Math.round((pt.y - drag.dy) / 5) * 5);
+    drag.g.setAttribute("transform", `translate(${drag.b.x},${drag.b.y})`); renderWires();
+  } else {
+    const [x1, y1] = portPos(drag.b, drag.p, "out");
+    $("tmp").setAttribute("d", wirePath(x1, y1, pt.x, pt.y));
+  }
+});
+svg.addEventListener("pointerup", (ev) => {
+  if (drag && drag.kind === "wire") {
+    $("tmp").style.display = "none";
+    const t = document.elementFromPoint(ev.clientX, ev.clientY);
+    if (t && t.classList.contains("port") && t.dataset.dir === "in" && +t.dataset.b !== drag.b) {
+      dg.connect(drag.b, drag.p, +t.dataset.b, +t.dataset.p); render();
+    }
+  } else if (drag && drag.kind === "move") { save(); layoutSvg(false); }
+  drag = null;
+});
+// 팔레트에서 끌어 놓기
+svg.addEventListener("dragover", (ev) => ev.preventDefault());
+svg.addEventListener("drop", (ev) => {
+  ev.preventDefault(); const pt = svgPt(ev), item = JSON.parse(ev.dataTransfer.getData("text/plain"));
+  addFromPalette(item, pt.x - BW / 2, pt.y - 20);
+});
+document.addEventListener("keydown", (ev) => {
+  if (["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName)) return;
+  if (ev.key === "Delete" || ev.key === "Backspace") { deleteSel(); ev.preventDefault(); }
+});
+function deleteSel() {
+  if (!sel) return;
+  if (sel.kind === "block") dg.remove(sel.id); else dg.disconnect(sel.id);
+  sel = null; render();
+}
+
+// ---------------- 팔레트 ----------------
+const PALETTE = [
+  ["신호원", [["const", "상수", {}], ["const", "속도 지령 (rpm)", { value: 1000, rpm: true }], ["step", "계단", {}], ["square", "사각파", {}], ["sine", "사인파", {}]]],
+  ["연산", [["sum", "합산점 Σ (+−)", {}], ["sum", "합산점 Σ (++)", { signs: "++" }], ["gain", "게인 K", {}], ["limit", "리미터", {}], ["integ", "적분기 1/s", {}], ["lpf", "1차 지연 필터", {}]]],
+  ["제어기", [["pid", "P 제어기", { mode: "P", Ki: 0 }], ["pid", "PI 제어기", { mode: "PI" }], ["pid", "PID 제어기", { mode: "PID", Kd: 0.01 }]]],
+  ["전력·전동기", [["chopper", "초퍼", {}], ["motor", "DC 전동기", {}]]],
+  ["관측", [["scope", "스코프", {}], ["display", "숫자 표시", {}]]],
+];
+function freeSpot(type, p) {
+  // 보이는 영역에서 다른 블록과 겹치지 않는 첫 자리
+  const wr = $("wrap"), tmp = { type, p: Object.assign({}, ...Object.entries(DEF[type].params).map(([k, s]) => ({ [k]: s.v })), p) };
+  const H = geo(tmp).H;
+  for (let y = wr.scrollTop + 15; y < wr.scrollTop + 520; y += 20)
+    for (let x = wr.scrollLeft + 15; x < wr.scrollLeft + 950; x += 20) {
+      const hit = dg.blocks.some((b) => x < b.x + BW + 20 && x + BW + 20 > b.x && y < b.y + geo(b).H + 15 && y + H + 15 > b.y);
+      if (!hit) return [x, y];
+    }
+  return [wr.scrollLeft + 20, wr.scrollTop + 20];
+}
+function addFromPalette([type, , p], x, y) {
+  if (x === undefined) [x, y] = freeSpot(type, p);
+  const b = dg.add(type, Math.round(x), Math.round(y), p);
+  sel = { kind: "block", id: b.id }; render();
+}
+PALETTE.forEach(([cat, items]) => {
+  const h = document.createElement("h5"); h.textContent = cat; $("pal").appendChild(h);
+  items.forEach((it) => {
+    const btn = document.createElement("button"); btn.textContent = "＋ " + it[1]; btn.draggable = true;
+    btn.style.background = CATCOL[cat];
+    btn.onclick = () => addFromPalette(it);
+    btn.ondragstart = (ev) => ev.dataTransfer.setData("text/plain", JSON.stringify(it));
+    $("pal").appendChild(btn);
+  });
+});
+
+// ---------------- 속성 패널 ----------------
+const STRUCT_KEYS = new Set(["signs", "kind", "quad"]);
+function renderProps() {
+  const P = $("props"); P.innerHTML = "";
+  if (!sel) {
+    P.innerHTML = `<h4>사용법</h4><div class="d">
+      • 왼쪽 목록을 <b>클릭</b>하거나 화면으로 <b>끌어다 놓아</b> 블록을 추가합니다.<br>
+      • 블록 오른쪽 <b>●(출력)</b>을 끌어 다른 블록 왼쪽 <b>○(입력)</b>에 놓으면 선이 이어집니다.<br>
+      • 블록을 클릭하면 여기서 값을 바꿀 수 있고, <b>실행 중에 바로 반영</b>됩니다.<br>
+      • 블록이나 선을 선택하고 <b>Delete</b> 키(또는 [선택 삭제])로 지웁니다.<br>
+      • 오차 = 지령 − 피드백 은 합산점 부호 "+-" 로 만듭니다.<br>
+      • 만든 구조는 이 브라우저에 자동 저장됩니다.</div>`;
+    return;
+  }
+  if (sel.kind === "wire") {
+    const w = dg.wires[sel.id]; if (!w) { sel = null; return renderProps(); }
+    const a = dg.get(w.from.b), b = dg.get(w.to.b);
+    P.innerHTML = `<h4>연결선</h4><div class="d">${titleOf(a)}.${outsOf(a)[w.from.p]} → ${titleOf(b)}.${insOf(b)[w.to.p]}</div>`;
+    const x = document.createElement("button"); x.textContent = "이 선 삭제"; x.onclick = deleteSel; P.appendChild(x); return;
+  }
+  const b = dg.get(sel.id); if (!b) { sel = null; return renderProps(); }
+  const d = DEF[b.type];
+  P.innerHTML = `<h4>${titleOf(b)}</h4><div class="d">${d.desc}</div>`;
+  const nameF = document.createElement("div"); nameF.className = "f";
+  nameF.innerHTML = `<label>블록 이름</label><input type="text" value="${b.name || ""}" placeholder="${d.name}">`;
+  nameF.querySelector("input").oninput = (e) => { b.name = e.target.value; refreshBlock(); };
+  P.appendChild(nameF);
+  for (const [k, s] of Object.entries(d.params)) {
+    if (b.type === "pid" && ((k === "Ki" && b.p.mode === "P") || ((k === "Kd" || k === "N") && b.p.mode !== "PID"))) continue;
+    if (b.type === "pid" && (k === "lo" || k === "hi" || k === "aw") && !b.p.lim) continue;
+    const f = document.createElement("div");
+    if (s.type === "bool") {
+      f.className = "chk"; f.innerHTML = `<label class="chk"><input type="checkbox" ${b.p[k] ? "checked" : ""}>${s.label}</label>`;
+      f.querySelector("input").onchange = (e) => { b.p[k] = e.target.checked; changed(k); };
+    } else if (s.type === "select") {
+      f.className = "f"; f.innerHTML = `<label>${s.label}</label><select>${s.options.map((o) => `<option ${o === b.p[k] ? "selected" : ""}>${o}</option>`).join("")}</select>`;
+      f.querySelector("select").onchange = (e) => {
+        const old = b.p[k]; b.p[k] = e.target.value;
+        // PI → P 처럼 제어기 종류를 바꾸면 이름 속 종류 표기도 같이 바꿈
+        if (b.type === "pid" && k === "mode" && b.name) b.name = b.name.replace(new RegExp(`(^|[^A-Za-z])${old}(?![A-Za-z])`), `$1${b.p.mode}`);
+        changed(k, true);
+      };
+    } else {
+      f.className = "f"; f.innerHTML = `<label>${s.label}${s.unit ? ` [${s.unit}]` : ""}</label><input type="${s.type === "text" ? "text" : "number"}" step="any" value="${b.p[k]}">`;
+      f.querySelector("input").oninput = (e) => {
+        if (s.type === "text") { const v = e.target.value; if (k === "signs" && !/^[+-]{1,6}$/.test(v)) return; b.p[k] = v; }
+        else { const v = parseFloat(e.target.value); if (!isFinite(v)) return; b.p[k] = v; }
+        changed(k);
+      };
+    }
+    if (s.help) { const hh = document.createElement("div"); hh.className = "d"; hh.textContent = s.help; f.appendChild(hh); }
+    P.appendChild(f);
+  }
+  if (b.type === "pid") {
+    const r = document.createElement("div"); r.className = "d";
+    const c = CFG.ctrl, g = DCEngine.recommendedGains(c, c.K, 1000, 50);
+    r.innerHTML = `참고 (ωci = 1000, ωcs = 50 rad/s 기준 추천):<br>전류 PI Kp=${g.Kpi.toPrecision(3)}, Ki=${g.Kii.toPrecision(3)}<br>` +
+      `속도 PI Kp=${g.Kpw.toPrecision(3)}, Ki=${g.Kiw.toPrecision(3)}`;
+    P.appendChild(r);
+  }
+  const row = document.createElement("div"); row.style.cssText = "display:flex; gap:6px; margin-top:8px";
+  const dup = document.createElement("button"); dup.textContent = "복제";
+  dup.onclick = () => { const nb = dg.add(b.type, b.x + 25, b.y + 25, JSON.parse(JSON.stringify(b.p)), b.name); sel = { kind: "block", id: nb.id }; render(); };
+  const del = document.createElement("button"); del.textContent = "블록 삭제"; del.onclick = deleteSel;
+  row.append(dup, del); P.appendChild(row);
+}
+function changed(k, rerenderProps) {
+  if (STRUCT_KEYS.has(k)) dg.version++;
+  if (rerenderProps || (DEF[dg.get(sel.id).type] === DEF.pid && (k === "mode" || k === "lim"))) render(); else refreshBlock();
+}
+function refreshBlock() { render({ props: false }); }   // 속성 패널 입력 포커스를 유지하며 그림만 갱신
+
+// ---------------- 스코프 ----------------
+const strips = {};    // scope id → {strip, sig}
+const COLORS = ["#e9a23b", "#264653", "#e76f51"];
+function scopeSeries(b) {
+  return insOf(b).map((nm, i) => {
+    const wire = dg.wires.find((x) => x.to.b === b.id && x.to.p === i);
+    if (!wire) return null;
+    const src = dg.get(wire.from.b);
+    return `${titleOf(src)}.${outsOf(src)[wire.from.p]}`;
+  });
+}
+function renderScopes() {
+  const box = $("scopes");
+  const scopes = dg.blocks.filter((b) => b.type === "scope");
+  for (const id of Object.keys(strips)) if (!scopes.find((b) => b.id === +id)) { strips[id].wrap.remove(); delete strips[id]; }
+  for (const b of scopes) {
+    const names = scopeSeries(b), sig = JSON.stringify([names, b.p.name, b.p.rpm]);
+    if (strips[b.id] && strips[b.id].sig === sig) continue;
+    if (strips[b.id]) strips[b.id].wrap.remove();
+    const wrap = document.createElement("div"); const cv = document.createElement("canvas"); wrap.appendChild(cv); box.appendChild(wrap);
+    const series = names.map((n, i) => ({ name: n || "(연결 없음)", color: COLORS[i], width: i === 0 ? 2.5 : 2, dash: !n }));
+    const title = b.p.name + (b.p.rpm ? " [rpm 표시]" : "");
+    strips[b.id] = { strip: new RTCharts.Strip(cv, series, { title, minSpan: 1e-6 }), sig, wrap };
+  }
+}
+function renderStatus() {
+  const m = runner.check();
+  $("status").innerHTML = m.length ? m.map((x) => `<div class="w">${x}</div>`).join("") :
+    `블록 ${dg.blocks.length}개, 연결 ${dg.wires.length}개 · 문제 없음`;
+}
+
+// ---------------- 도구 막대 ----------------
+Object.keys(TPL).forEach((n) => { const o = document.createElement("option"); o.textContent = n; $("tpl").appendChild(o); });
+$("loadTpl").onclick = () => {
+  if (dg.blocks.length && !confirm("지금 화면의 블록을 지우고 템플릿을 불러올까요?")) return;
+  dg.clear(); dg.nid = 1; TPL[$("tpl").value](dg); sel = null; restart(); render(); layoutSvg(true);
+};
+let running = true;
+$("run").onclick = () => { running = !running; $("run").textContent = running ? "⏸ 일시정지" : "▶ 실행"; };
+function restart() { runner.reset(); Object.values(strips).forEach((s) => s.strip.clear()); nextSample = 0; }
+$("reset").onclick = restart;
+$("del").onclick = deleteSel;
+$("clear").onclick = () => { if (confirm("모든 블록을 지울까요?")) { dg.clear(); sel = null; render(); } };
+$("exp").onclick = () => { $("json").value = JSON.stringify(dg.toJSON(), null, 1); $("dlg").showModal(); };
+$("close").onclick = () => $("dlg").close();
+$("imp").onclick = () => {
+  try { dg.load(JSON.parse($("json").value)); sel = null; restart(); render(); layoutSvg(true); $("dlg").close(); }
+  catch (e) { alert("JSON 을 읽을 수 없습니다: " + e.message); }
+};
+
+// ---------------- 실행 루프 ----------------
+if (!loadSaved()) TPL["속도·전류 이중 루프 (PI-PI) + E 피드포워드"](dg);
+render(); layoutSvg(true);
+let last = performance.now(), nextSample = 0, lastDisp = 0;
+function frame(now) {
+  const dtWall = Math.min((now - last) / 1000, 0.05); last = now;
+  const win = +$("win").value, h = +$("ts").value;
+  if (running) {
+    const dtSim = dtWall * +$("spd").value, nsub = 6;
+    for (let k = 0; k < nsub; k++) {
+      runner.advance(dtSim / nsub, h);
+      if (runner.t >= nextSample) {
+        for (const b of dg.blocks) if (b.type === "scope" && strips[b.id]) {
+          const u = runner.inputs(b), sc = b.p.rpm ? RPM : 1;
+          strips[b.id].strip.push(runner.t, u.map((v) => (v === undefined ? NaN : v * sc)));
+        }
+        nextSample = runner.t + win / 600;
+      }
+    }
+  }
+  for (const s of Object.values(strips)) s.strip.draw(runner.t, win);
+  if (now - lastDisp > 120) {
+    lastDisp = now;
+    for (const b of dg.blocks) if (b.type === "display" && dispText[b.id]) {
+      const v = runner.inputs(b)[0];
+      dispText[b.id].textContent = v === undefined ? "—" : `${(+v).toPrecision(4)} ${b.p.unit || ""}`;
+    }
+    const mo = dg.blocks.find((b) => b.type === "motor");
+    const o = mo && runner.out[mo.id];
+    $("ro").innerHTML = `<span>시뮬레이션 시각 <b>${runner.t.toFixed(3)} s</b></span>` +
+      (o ? `<span>${titleOf(mo)}: n <b>${o[1].toFixed(1)} rpm</b></span><span>Ia <b>${o[2].toFixed(2)} A</b></span>` +
+           `<span>E <b>${o[3].toFixed(1)} V</b></span><span>Te <b>${o[4].toFixed(2)} N·m</b></span>` : "");
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script></body></html>

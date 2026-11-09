@@ -17,6 +17,7 @@ def render():
     names = [m.name for m in models]
     choice = st.segmented_control("전동기 종류", names, default=names[0], key="motor_choice")
     model_cls = models[names.index(choice or names[0])]
+    st.session_state["_keep_motor_choice"] = model_cls.name   # 다른 페이지(블록 편집기)에서 참고
     st.caption("종류를 바꾸면 파라미터와 4개 탭이 모두 그 전동기 기준으로 바뀝니다. "
                "공통 파라미터(V, Ra, J 등)와 종류별로 입력해 둔 값은 그대로 유지됩니다.")
 

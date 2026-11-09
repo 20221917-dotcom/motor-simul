@@ -6,13 +6,14 @@
 """
 import streamlit as st
 
-from ui.pages import ac, concepts, dc_sim
+from ui.pages import ac, concepts, dc_blocks, dc_sim
 
 st.set_page_config(page_title="전동기 학습 시뮬레이터", page_icon="⚙️", layout="wide")
 
 pages = {
     "직류 전동기": [
         st.Page(dc_sim.render, title="DC 전동기 시뮬레이터", icon="⚙️", default=True),
+        st.Page(dc_blocks.render, title="제어 블록 편집기", icon="🧩", url_path="blocks"),
     ],
     "교류 전동기 (준비 중)": [
         st.Page(ac.induction, title="유도전동기", icon="🌀", url_path="induction"),

@@ -195,6 +195,8 @@ def render(model, params):
                  r"K_{i\omega} = \frac{K_{p\omega}\,\omega_{cs}}{4}")
         st.caption(f"현재 Kφ = {kphi:.3f} V·s/rad, 전기자 시정수 La/Ra = "
                    f"{params['La'] / params['Ra'] * 1000:.1f} ms")
+    st.info("🧩 제어 구조를 직접 바꿔 보고 싶다면 왼쪽 메뉴의 **제어 블록 편집기**에서 "
+            "블록을 끌어다 이어 구성할 수 있습니다 (전류 루프만, P 제어, PID, 위치 제어 등).")
     st.markdown("#### 실시간 제어 실험")
     st.caption("계산이 브라우저에서 실시간으로 돌아갑니다. 속도 지령·부하·게인·전류 제한·초퍼 종류를 "
                "바꾸면 **그 순간부터** 반영되어 현재 상태에서 어떻게 반응하는지 볼 수 있습니다. "

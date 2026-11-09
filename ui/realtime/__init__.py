@@ -22,6 +22,7 @@ def _build(template, config):
     html = html.replace("/*ENGINE*/", _read("engine.js"))
     html = html.replace("/*CHARTS*/", _read("charts.js"))
     html = html.replace("/*STRUCTURE*/", _read("structure.js"))
+    html = html.replace("/*BLOCKS*/", _read("blocks.js"))
     return html.replace("/*CONFIG*/", json.dumps(config))
 
 
@@ -63,3 +64,9 @@ def control_html(params, kphi, Ts=1e-4):
 
 def render(html, height):
     components.html(html, height=height, scrolling=False)
+
+
+def editor_html(motors, default_motor, ctrl):
+    """제어 블록 편집기. motors: {이름: {type, sigma, p, V, Vf, Rfx}}, ctrl: 템플릿 게인 계산용."""
+    cfg = {"motors": motors, "defaultMotor": default_motor, "ctrl": ctrl}
+    return _build("editor.html", cfg)
