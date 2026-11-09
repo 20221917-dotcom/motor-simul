@@ -2,13 +2,13 @@
 import streamlit as st
 
 
-def _key(spec):
-    return f"p_{spec.key}"
+def _default_widget_value(s):
+    return s.default_label() if s.choices else float(s.default)
 
 
 def reset_defaults(specs):
     for s in specs:
-        st.session_state[_key(s)] = float(s.default)
+        st.session_state[s.widget_key] = _default_widget_value(s)
 
 
 def render_sidebar(model_cls):
@@ -27,9 +27,15 @@ def render_sidebar(model_cls):
     for g in groups:
         with sb.expander(g, expanded=True):
             for s in (x for x in specs if x.group == g):
-                k = _key(s)
+                k = s.widget_key
                 if k not in st.session_state:
-                    st.session_state[k] = float(s.default)
+                    st.session_state[k] = _default_widget_value(s)
+                if s.choices:
+                    labels = [c[0] for c in s.choices]
+                    sel = st.radio(s.label, labels, key=k, horizontal=True,
+                                   help=s.help or None)
+                    params[s.key] = dict(s.choices)[sel]
+                    continue
                 val = st.number_input(f"{s.symbol} · {s.label} [{s.unit}]", key=k,
                                       step=s.step, format="%.4g", help=s.help or None)
                 params[s.key] = s.to_si(val)

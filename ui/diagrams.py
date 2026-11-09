@@ -120,39 +120,95 @@ class Sketch:
 # --------------------------------------------------------------------------
 # 결선도
 # --------------------------------------------------------------------------
-def _armature_branch(s, x_left, x_right, top, bot, R_label="Ra", L_label="La"):
-    """위쪽 선에 저항·인덕터, 오른쪽에 전기자(M)."""
-    s.resistor((x_left, top), (x_left + 1.6, top), R_label, label_side=1)
-    s.inductor((x_left + 1.6, top), (x_left + 3.0, top), L_label, label_side=1)
-    s.wire((x_left + 3.0, top), (x_right, top))
-    a_top, a_bot = s.armature(x_right, (top + bot) / 2)
-    s.wire((x_right, top), a_top)
-    s.wire(a_bot, (x_right, bot))
-    s.text(x_right + 0.85, (top + bot) / 2, "E = Kφω", size=12)
-    return a_top
+TOP, BOT = 2.0, -1.0
 
 
-def wiring_diagram(excitation: str):
+def _chain(s, x, y, items):
+    """위쪽 도선을 따라 소자를 차례로 배치. items: [(종류, 길이, 라벨)]. 끝 x 를 돌려준다."""
+    for kind, L, label in items:
+        if kind == "R":
+            s.resistor((x, y), (x + L, y), label)
+        elif kind == "Rv":
+            s.resistor((x, y), (x + L, y), label, variable=True)
+        elif kind == "L":
+            s.inductor((x, y), (x + L, y), label)
+        else:
+            s.wire((x, y), (x + L, y))
+        x += L
+    return x
+
+
+def _motor_at(s, x_from, x_m):
+    """도선을 x_m 까지 잇고 전기자(M)를 세로로 놓은 뒤 아래 도선 끝점을 돌려준다."""
+    s.wire((x_from, TOP), (x_m, TOP))
+    a_top, a_bot = s.armature(x_m, (TOP + BOT) / 2)
+    s.wire((x_m, TOP), a_top)
+    s.wire(a_bot, (x_m, BOT))
+    s.text(x_m + 0.85, (TOP + BOT) / 2, "E = Kφω", size=12)
+
+
+def _shunt_field_branch(s, x):
+    """x 위치에서 위→아래로 Rfx(가변) + 분권 계자 권선."""
+    s.resistor((x, TOP), (x, 1.0), "Rfx", variable=True, label_side=-1)
+    s.inductor((x, 1.0), (x, -0.4), "Lf, Rf", label_side=-1)
+    s.wire((x, -0.4), (x, BOT))
+    s.current((x + 0.35, 0.6), (x + 0.35, -0.1), "If")
+
+
+def wiring_diagram(excitation: str, variant: str = ""):
     s = Sketch()
-    top, bot = 2.0, -1.0
     if excitation == "separately":
-        # 계자 회로 (왼쪽)
         st_, sb = s.source(0.0, 0.5, "Vf")
-        s.wire(st_, (0, top), (0.6, top))
-        s.resistor((0.6, top), (2.0, top), "Rfx", variable=True)
-        s.wire((2.0, top), (2.6, top), (2.6, 1.7))
+        s.wire(st_, (0, TOP), (0.6, TOP))
+        s.resistor((0.6, TOP), (2.0, TOP), "Rfx", variable=True)
+        s.wire((2.0, TOP), (2.6, TOP), (2.6, 1.7))
         s.inductor((2.6, 1.7), (2.6, 0.2), "Lf, Rf", label_side=-1)
-        s.wire((2.6, 0.2), (2.6, bot), (0, bot), sb)
+        s.wire((2.6, 0.2), (2.6, BOT), (0, BOT), sb)
         s.current((2.95, 1.4), (2.95, 0.6), "If")
         s.text(1.3, -1.45, "계자 회로 (별도 전원)", size=12, color="#555")
-        # 전기자 회로 (오른쪽)
         vt, vb = s.source(4.2, 0.5, "V")
-        s.wire(vt, (4.2, top), (4.6, top))
-        _armature_branch(s, 4.6, 8.6, top, bot)
-        s.wire((8.6, bot), (4.2, bot), vb)
-        s.current((7.7, top + 0.25), (8.3, top + 0.25), "Ia")
+        s.wire(vt, (4.2, TOP), (4.6, TOP))
+        x = _chain(s, 4.6, TOP, [("R", 1.6, "Ra"), ("L", 1.4, "La")])
+        _motor_at(s, x, 8.6)
+        s.wire((8.6, BOT), (4.2, BOT), vb)
+        s.current((7.7, TOP + 0.25), (8.3, TOP + 0.25), "Ia")
         s.text(6.4, -1.45, "전기자 회로", size=12, color="#555")
         return s.done([-1.0, 10.0], [-1.8, 2.8])
+
+    vt, vb = s.source(0.0, 0.5, "V")
+    s.wire(vt, (0, TOP))
+    s.current((0.15, TOP + 0.25), (0.85, TOP + 0.25), "IL")
+    if excitation == "shunt":
+        s.wire((0, TOP), (2.0, TOP))
+        _shunt_field_branch(s, 2.0)
+        x = _chain(s, 2.0, TOP, [("W", 0.6, ""), ("R", 1.6, "Ra"), ("L", 1.4, "La")])
+        _motor_at(s, x, 8.0)
+        s.wire((8.0, BOT), (0, BOT), vb)
+        s.current((6.4, TOP + 0.25), (7.1, TOP + 0.25), "Ia")
+        s.text(4.0, -1.45, "계자가 전기자와 병렬 · IL = Ia + If", size=12, color="#555")
+        return s.done([-1.0, 9.4], [-1.8, 2.8])
+    if excitation == "series":
+        x = _chain(s, 0.0, TOP, [("W", 1.0, ""), ("L", 1.6, "직권 계자 Ls, Rs"),
+                                 ("W", 0.4, ""), ("R", 1.6, "Ra"), ("L", 1.4, "La")])
+        _motor_at(s, x, 8.0)
+        s.wire((8.0, BOT), (0, BOT), vb)
+        s.current((6.4, TOP + 0.25), (7.1, TOP + 0.25), "Ia = If")
+        s.text(4.0, -1.45, "계자가 전기자와 직렬 · 계자 전류 = 전기자 전류", size=12, color="#555")
+        return s.done([-1.0, 9.4], [-1.8, 2.8])
+    if excitation == "compound":
+        s.wire((0, TOP), (1.8, TOP))
+        _shunt_field_branch(s, 1.8)
+        x = _chain(s, 1.8, TOP, [("W", 0.6, ""), ("L", 1.6, "직권 계자 Ls, Rs"),
+                                 ("W", 0.3, ""), ("R", 1.5, "Ra"), ("L", 1.3, "La")])
+        _motor_at(s, x, 8.6)
+        s.wire((8.6, BOT), (0, BOT), vb)
+        s.current((7.0, TOP + 0.25), (7.7, TOP + 0.25), "Ia")
+        note = {"가동 복권": "가동: 직권 자속이 분권 자속을 도움 (Kφ = Laf·If + Ms·Ia)",
+                "차동 복권": "차동: 직권 자속이 분권 자속과 반대 (Kφ = Laf·If − Ms·Ia)"}
+        s.text(4.3, -1.45, "장분권: 분권 계자는 전원 양단, 직권 계자는 전기자와 직렬", size=12,
+               color="#555")
+        s.text(4.3, -1.85, note.get(variant, ""), size=12, color="#c0692b")
+        return s.done([-1.0, 10.0], [-2.2, 2.8])
     raise NotImplementedError(excitation)
 
 

@@ -21,6 +21,12 @@ class SeparatelyExcitedDC(DCMotor):
 - 주의: 운전 중 계자가 끊기면 Kφ → 0 이 되어 속도가 급상승하고 전기자 전류가 커진다.
 """
 
+    steady_latex = [
+        r"I_f = \frac{V_f}{R_f + R_{fx}},\quad K\phi = L_{af} I_f",
+        r"\omega = \frac{V - I_a R_a}{K\phi} = \frac{V}{K\phi} - \frac{R_a}{(K\phi)^2}T_e",
+        r"K\phi I_a = T_L + B\omega,\qquad P_{in} = V I_a + V_f I_f",
+    ]
+
     @classmethod
     def param_specs(cls):
         return [SPEC_V, SPEC_VF, *SPECS_ARM, *SPECS_SHUNT_FIELD, *SPECS_MECH, *SPECS_LOAD]
@@ -48,10 +54,6 @@ class SeparatelyExcitedDC(DCMotor):
         }
 
     # ---- 동특성 ----------------------------------------------------------
-    def initial_state(self, u, field_preexcited=True):
-        if_ = u.Vf / self.R_field(u) if field_preexcited else 0.0
-        return np.array([0.0, if_, 0.0])
-
     def derivatives(self, t, x, u):
         ia, if_, w = x
         p = self.p

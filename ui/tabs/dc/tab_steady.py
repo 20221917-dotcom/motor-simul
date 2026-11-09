@@ -17,14 +17,27 @@ def _warnings(model, op, op_nl, params):
                  "전압을 올리거나 부하를 줄여 보세요.")
         return
     if not op.stable:
-        st.warning("⚠️ 찾은 운전점이 **불안정**합니다 (속도–토크 곡선 기울기 > B).")
+        msg = ("⚠️ 이 운전점은 **불안정**합니다. 운전점에서 선형화한 미분방정식의 고유값 중 "
+               "실수부가 양수인 것이 있어서, 작은 흔들림에도 운전점을 벗어납니다.")
+        if model.excitation == "compound" and model.sigma < 0:
+            R = params["Ra"] + params["Rs"]
+            msg += (f"\n\n**차동 복권의 전기적 불안정**: 속도가 오르면 직권 자속이 줄어드는 몫까지 "
+                    f"더해져 전류가 오히려 늘어납니다. 대략 **Ms·ω < Ra + Rs** 여야 안정합니다. "
+                    f"지금은 Ms·ω = {params['Ms'] * op.omega:.2f} Ω, Ra + Rs = {R:.2f} Ω 입니다. "
+                    f"사이드바에서 Ms 를 {0.8 * R / max(op.omega, 1):.4f} H 이하로 줄여 보세요.")
+        st.error(msg)
     if abs(op.ia) > 1.5 * I_r:
         st.error(f"⚠️ 전기자 전류 {op.ia:.1f} A 가 정격 {I_r:.0f} A 의 "
                  f"{op.ia / I_r:.1f} 배입니다. 연속 운전 시 과열됩니다.")
     elif abs(op.ia) > 1.05 * I_r:
         st.warning(f"전기자 전류 {op.ia:.1f} A 가 정격 {I_r:.0f} A 를 초과합니다.")
-    if op_nl is not None and op_nl.rpm > 3 * max(op.rpm, 1):
-        st.error("⚠️ 무부하 속도가 매우 높습니다. 부하가 빠지면 **폭주** 위험이 있습니다.")
+    if op_nl is None:
+        st.error("⚠️ 무부하 운전점이 없습니다 (B = 0 인 직권 전동기는 무부하 속도가 무한대). "
+                 "부하가 빠지면 **폭주**합니다.")
+    elif op_nl.rpm > 2 * max(op.rpm, 1):
+        st.error(f"⚠️ 무부하 속도가 {op_nl.rpm:,.0f} rpm 으로 지금 운전 속도의 "
+                 f"{op_nl.rpm / max(op.rpm, 1):.1f} 배입니다. 부하가 빠지면 **폭주** 위험이 있습니다 "
+                 "(직권 전동기는 벨트 구동·무부하 운전 금지).")
 
 
 def _metrics(op, op_nl, model):
@@ -41,7 +54,7 @@ def _metrics(op, op_nl, model):
         [("입력 전력", fmt(op.P_in / 1e3, "kW"), None),
          ("출력 전력 (TL·ω)", fmt(op.P_out / 1e3, "kW"), None),
          ("효율", f"{op.eta * 100:.1f} %" if op.P_in > 0 else "—", None),
-         ("무부하 속도", f"{op_nl.rpm:.1f} rpm" if op_nl else "—",
+         ("무부하 속도", f"{op_nl.rpm:,.1f} rpm" if op_nl else "∞ (폭주)",
           f"속도 변동률 {reg:.2f} %" if reg is not None else None)],
     ]
     for row in rows:
@@ -49,12 +62,12 @@ def _metrics(op, op_nl, model):
         for c, (label, val, sub) in zip(cols, row):
             info_metric(c, label, val, sub)
     with st.expander("계산식 보기"):
-        st.latex(r"\omega = \frac{V - I_a R_a}{K\phi},\quad "
-                 r"K\phi I_a = T_L + B\omega \;\Rightarrow\; "
-                 r"\omega = \frac{V - R_a T_L / K\phi}{K\phi + R_a B / K\phi}")
+        for eq in model.steady_latex:
+            st.latex(eq)
         st.latex(r"\text{속도 변동률} = \frac{\omega_{\text{무부하}} - \omega}{\omega}\times 100\,\%,"
                  r"\qquad \eta = \frac{T_L\,\omega}{P_{in}}")
-        st.caption("타여자 전동기의 입력 전력에는 계자 전원 입력 Vf·If 도 포함합니다.")
+        st.caption("입력 전력에는 계자 회로 입력도 포함합니다. 운전점은 Ia 를 변수로 두고 "
+                   "Te(Ia) − B·ω(Ia) − TL = 0 의 근을 수치적으로 찾습니다.")
 
 
 def _speed_torque(model, op, op_nl, u, params):
@@ -65,6 +78,8 @@ def _speed_torque(model, op, op_nl, u, params):
     fig.add_trace(go.Scatter(x=te, y=to_rpm(w), name=f"{model.name} 속도–토크 곡선",
                              line=dict(color=PALETTE["speed"], width=3)))
     w_top = max(np.max(w) if len(w) else 0, op_nl.omega if op_nl else 0) * 1.1
+    if op:  # 직권처럼 저부하 속도가 매우 큰 경우 운전점이 잘 보이도록 범위 제한
+        w_top = min(w_top, 3.0 * max(op.omega, 1.0))
     wl = np.linspace(0, w_top, 50)
     fig.add_trace(go.Scatter(x=u.TL + params["B"] * wl, y=to_rpm(wl),
                              name="부하선 TL + Bω", line=dict(color=PALETTE["TL"], dash="dash")))

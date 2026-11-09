@@ -19,13 +19,25 @@ class ParamSpec:
     allow_zero: bool = False  # positive=True 이면서 0은 허용 (예: B, Rfx)
     step: float | None = None
     help: str = ""
+    ui_key: str = ""          # 화면 위젯 키 (같은 기호라도 전동기마다 기본값이 다를 때 구분)
+    choices: tuple = ()       # 선택형 파라미터: ((표시 이름, 값), ...)
+
+    @property
+    def widget_key(self) -> str:
+        return f"p_{self.ui_key or self.key}"
+
+    def default_label(self) -> str:
+        for label, v in self.choices:
+            if v == self.default:
+                return label
+        return self.choices[0][0]
 
     def to_si(self, display_value: float) -> float:
         return display_value * self.scale
 
     def check(self, si_value: float) -> str | None:
         """물리적으로 말이 안 되는 값이면 오류 메시지를 돌려준다."""
-        if not self.positive:
+        if not self.positive or self.choices:
             return None
         if self.allow_zero and si_value < 0:
             return f"{self.symbol}({self.label})는 0 이상이어야 합니다."

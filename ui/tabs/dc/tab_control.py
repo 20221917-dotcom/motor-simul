@@ -11,9 +11,11 @@ from ui.diagrams import control_block_diagram
 from ui.plots import info_metric, style, PALETTE
 
 
-def _kphi(model):
+def _kphi(model, params):
+    """제어 모델에 쓸 Kφ. 타여자·분권은 일정, 직권·복권은 정격 전류에서의 값으로 고정."""
     u = model.default_inputs()
-    return float(model.kphi(0.0, model.field_ss(0.0, u)))
+    ia = 0.0 if model.excitation in ("separately", "shunt") else params["I_rated"]
+    return float(model.kphi(ia, model.field_ss(ia, u)))
 
 
 def _recommended(params, kphi):
@@ -165,10 +167,14 @@ def _summary(r, ro, cfg, params):
 
 
 def render(model, params):
+    kphi = _kphi(model, params)
     if model.excitation != "separately":
-        st.info("제어 탭은 **타여자 전동기** 기준입니다. 사이드바의 전기자·기계 파라미터를 쓰고 "
-                "계자는 정격으로 일정하다고 봅니다.")
-    kphi = _kphi(model)
+        st.info(f"제어 탭은 **타여자 전동기** 기준입니다. 사이드바의 전기자·기계 파라미터를 쓰고, "
+                f"Kφ 는 선택한 {model.name} 전동기의 정격점 값 {kphi:.3f} V·s/rad 로 고정합니다 "
+                "(계자를 따로 여자했다고 보는 등가 모델).")
+    if kphi <= 0:
+        st.error("Kφ 가 0 이하라 속도 제어를 할 수 없습니다. 파라미터를 확인하세요.")
+        return
     _init_state(params, kphi)
     st.markdown("#### 제어 구조")
     st.plotly_chart(control_block_diagram(st.session_state.ct_ff), use_container_width=True,

@@ -24,12 +24,13 @@ def _init_state(params, force=False):
             ss[k] = v
 
 
-def _preset(name, params):
+def _preset(name, params, R0):
+    """R0: 기동 저항을 뺀 전기자 회로 저항 (직권·복권은 직권 계자 저항 포함)."""
     ss = st.session_state
     _init_state(params, force=True)
     if name == "rst":
         # 돌입 전류를 정격의 2배로 제한하는 기동 저항
-        ss.dy_rst = round(max(params["V"] / (2 * params["I_rated"]) - params["Ra"], 0.0), 2)
+        ss.dy_rst = round(max(params["V"] / (2 * params["I_rated"]) - R0, 0.0), 2)
         ss.dy_trst = 0.5
     elif name == "volt":
         ss.dy_change = "전기자 전압 변경"
@@ -57,19 +58,26 @@ def _run(model_key, params_items, s):
 
 def _settings(model, params):
     ss = st.session_state
+    R0 = float(model.R_arm(replace(model.default_inputs(), Rst=0.0)))
+    has_field_ctrl = model.field_control_input in ("Vf", "Rfx")
     st.markdown("**프리셋**")
     p = st.columns(4)
-    p[0].button("직입 기동", on_click=_preset, args=("direct", params), use_container_width=True)
-    p[1].button("기동 저항 사용", on_click=_preset, args=("rst", params),
+    p[0].button("직입 기동", on_click=_preset, args=("direct", params, R0),
                 use_container_width=True)
-    p[2].button("전압 제어", on_click=_preset, args=("volt", params), use_container_width=True)
-    p[3].button("계자 약화", on_click=_preset, args=("field", params), use_container_width=True,
-                disabled=model.field_control_input not in ("Vf", "Rfx"))
+    p[1].button("기동 저항 사용", on_click=_preset, args=("rst", params, R0),
+                use_container_width=True)
+    p[2].button("전압 제어", on_click=_preset, args=("volt", params, R0),
+                use_container_width=True)
+    p[3].button("계자 약화", on_click=_preset, args=("field", params, R0),
+                use_container_width=True, disabled=not has_field_ctrl)
+    if not has_field_ctrl and ss.dy_change == "계자 변경":
+        ss.dy_change = "없음"
 
     c = st.columns(4)
     with c[0]:
         st.number_input("시뮬레이션 시간 [s]", 0.2, 30.0, step=0.5, key="dy_tend")
         st.checkbox("계자 사전 여자 (기동 전 If 확립)", key="dy_preex",
+                    disabled=model.excitation == "series",
                     help="끄면 전기자와 계자를 동시에 투입합니다. 계자 시정수 Lf/Rf 동안 "
                          "Kφ 가 작아 큰 전류가 오래 흐릅니다.")
     with c[1]:
@@ -81,13 +89,16 @@ def _settings(model, params):
         st.number_input("기동 저항 제거 시각 [s]", 0.0, 30.0, step=0.1, key="dy_trst",
                         disabled=ss.dy_rst <= 0)
     with c[3]:
-        st.selectbox("운전 중 변경", CHANGE_OPTS, key="dy_change")
+        st.selectbox("운전 중 변경", CHANGE_OPTS if has_field_ctrl else CHANGE_OPTS[:2],
+                     key="dy_change")
         st.number_input("변경 시각 [s]", 0.0, 30.0, step=0.1, key="dy_tchg",
                         disabled=ss.dy_change == "없음")
         if ss.dy_change == "전기자 전압 변경":
             st.number_input("새 전압 [V]", 0.0, 2000.0, step=10.0, key="dy_newV")
         elif ss.dy_change == "계자 변경":
-            st.slider("새 계자 세기 [% 기준]", 20, 150, key="dy_fpct")
+            st.slider("새 계자 세기 [% 기준]", 20, 150, key="dy_fpct",
+                      help="타여자: Vf 를 조정 / 분권·복권: Rfx 를 조정 (Rfx ≥ 0 이라 "
+                           "기준보다 세게는 못 함)")
     return {"tend": ss.dy_tend, "tload": ss.dy_tload, "rst": ss.dy_rst, "trst": ss.dy_trst,
             "change": ss.dy_change, "tchg": ss.dy_tchg, "newV": float(ss.dy_newV),
             "fpct": ss.dy_fpct, "preex": ss.dy_preex}
@@ -112,16 +123,23 @@ def _summary(res, s, params):
                     f"{dip / before * 100:.1f} %" if before > 0 else None)
         info_metric(c[3], "부하 인가 후 정상 강하", f"{settled:.1f} rpm",
                     f"{settled / before * 100:.1f} %" if before > 0 else None)
+    if np.min(rpm) < -10:
+        st.error(f"⚠️ 기동 중 **역회전**했습니다 (최저 {np.min(rpm):.0f} rpm). 차동 복권은 기동 "
+                 "전류가 클 때 직권 자속이 분권 자속을 넘어서 Kφ 가 음수가 되기 때문입니다. "
+                 "그래서 차동 복권은 직권 계자를 단락하고 기동합니다.")
+    if np.max(np.abs(rpm)) > 5000:
+        st.error(f"⚠️ 속도가 {np.max(np.abs(rpm)):,.0f} rpm 까지 올라갔습니다 (폭주).")
     if abs(ia[k]) > 2.5 * I_r:
         st.warning(f"돌입 전류가 정격의 {abs(ia[k]) / I_r:.0f} 배입니다. 실제 전동기에서는 "
                    "정류 불꽃, 브러시 손상, 보호계전기 동작이 생깁니다. 기동 저항이나 "
                    "전압 제어 기동을 써 보세요.")
 
 
-def _plot(res, params):
+def _plot(res, params, model):
     t = res.t
+    if_title = "계자 전류 If [A]" + (" (= Ia, 직권)" if model.excitation == "series" else "")
     fig = make_subplots(rows=5, cols=1, shared_xaxes=True, vertical_spacing=0.035,
-                        subplot_titles=("속도 [rpm]", "전기자 전류 Ia [A]", "계자 전류 If [A]",
+                        subplot_titles=("속도 [rpm]", "전기자 전류 Ia [A]", if_title,
                                         "토크 [N·m]", "전압 [V]"))
     fig.add_trace(go.Scatter(x=t, y=res["rpm"], name="속도",
                              line=dict(color=PALETTE["speed"])), 1, 1)
@@ -152,4 +170,4 @@ def render(model, params):
     s = _settings(model, params)
     res = _run(model.key, tuple(sorted(params.items())), s)
     _summary(res, s, params)
-    st.plotly_chart(_plot(res, params), use_container_width=True)
+    st.plotly_chart(_plot(res, params, model), use_container_width=True)

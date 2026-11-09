@@ -27,8 +27,9 @@ def _equations():
 def _animation(model, params):
     ss = st.session_state
     u_nom = model.default_inputs()
-    op_nl = model.no_load(u_nom)
-    w_scale = op_nl.omega if op_nl and op_nl.omega > 1 else 100.0
+    # 회전 표시 속도 기준: 사이드바 부하에서의 운전 속도 (직권은 무부하 속도가 너무 큼)
+    op_ref = model.steady_state(u_nom) or model.no_load(u_nom)
+    w_scale = op_ref.omega if op_ref and op_ref.omega > 1 else 100.0
     if_nom = float(model.field_ss(params["I_rated"], u_nom))
     force_ref = float(model.kphi(params["I_rated"], if_nom) * params["I_rated"])
     T_rated = model.rated_torque()
@@ -43,7 +44,9 @@ def _animation(model, params):
     field_ok = model.field_control_input in ("Vf", "Rfx")
     fpct = c2.slider("계자 세기 [% 기준]", 20, 120, 100, step=5, key="pr_f",
                      disabled=not field_ok,
-                     help="기준 계자 전류 대비 비율. 줄이면 계자 약화")
+                     help="기준 계자 전류 대비 비율. 줄이면 계자 약화. "
+                          "분권·복권은 계자 조정 저항 Rfx 로 조정합니다. "
+                          "직권은 계자 전류 = 전기자 전류라 따로 조정하지 않습니다.")
     TL = c3.slider("부하 토크 TL [N·m]", 0.0, float(round(2.0 * T_rated, 1)),
                    float(min(max(params["TL"], 0.0), round(2.0 * T_rated, 1))),
                    step=1.0, key="pr_TL")
@@ -124,7 +127,11 @@ def render(model, params):
     with right:
         _equations()
     with left:
-        st.info(f"선택한 전동기: **{model.name}** · 여기서 보는 모든 값은 사이드바 파라미터 기준입니다.")
+        st.info(f"선택한 전동기: **{getattr(model, 'variant', model.name)}** · "
+                "여기서 보는 모든 값은 사이드바 파라미터 기준입니다.")
+        if model.excitation == "series":
+            st.warning("직권 전동기는 부하 토크를 0 근처로 내리면 속도가 매우 높아집니다 "
+                       "(무부하 폭주). 슬라이더로 직접 확인해 보세요.")
     _animation(model, params)
     st.divider()
     _torque_ripple()
@@ -132,7 +139,8 @@ def render(model, params):
     st.markdown(f"#### {model.name} 전동기 결선도와 특징")
     c1, c2 = st.columns([3, 2])
     with c1:
-        st.plotly_chart(wiring_diagram(model.excitation), use_container_width=True,
+        st.plotly_chart(wiring_diagram(model.excitation, getattr(model, "variant", "")),
+                        use_container_width=True,
                         config={"staticPlot": True})
     with c2:
         st.markdown(model.summary_md)

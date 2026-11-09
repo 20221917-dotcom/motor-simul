@@ -87,6 +87,20 @@ SPECS_SERIES_FIELD = [
     ParamSpec("Ls", "Ls", "직권 계자 인덕턴스", "mH", 5.0, G_SER, scale=1e-3, step=1.0),
     ParamSpec("Ms", "Ms", "직권 결합계수", "H", 0.08, G_SER, step=0.01, help="Kφ = Ms·Ia"),
 ]
+# 복권의 직권 계자: 분권 계자를 돕는 보조 권선이라 직권 전동기보다 훨씬 작다
+SPECS_SERIES_FIELD_COMPOUND = [
+    ParamSpec("Rs", "Rs", "직권 계자 저항", "Ω", 0.05, G_SER, step=0.01, ui_key="c_Rs"),
+    ParamSpec("Ls", "Ls", "직권 계자 인덕턴스", "mH", 1.0, G_SER, scale=1e-3, step=0.5,
+              ui_key="c_Ls"),
+    ParamSpec("Ms", "Ms", "직권 결합계수", "H", 0.015, G_SER, step=0.005, ui_key="c_Ms",
+              help="직권 계자 몫 Kφ = Ms·Ia. 정격 전류에서 분권 몫(Laf·If)의 10~30 % 정도가 보통"),
+]
+SPEC_COMPOUND_SIGN = ParamSpec(
+    "sigma", "σ", "복권 결선", "", 1.0, "복권 결선 (장분권)",
+    choices=(("가동 복권", 1.0), ("차동 복권", -1.0)),
+    help="가동: 직권 자속이 분권 자속을 돕는다 (Kφ = Laf·If + Ms·Ia). "
+         "차동: 서로 반대 (Kφ = Laf·If − Ms·Ia)")
+
 SPECS_MECH = [
     ParamSpec("J", "J", "관성 모멘트", "kg·m²", 0.1, G_MEC, step=0.01),
     ParamSpec("B", "B", "점성 마찰 계수", "N·m·s/rad", 0.005, G_MEC, allow_zero=True,
@@ -108,6 +122,7 @@ class DCMotor(MotorModel):
     excitation = ""            # "separately" | "shunt" | "series" | "compound"
     field_control_input = "Vf"  # 동특성 탭의 '계자 변경'이 바꾸는 입력
     summary_md = ""
+    steady_latex: list[str] = []   # 정상상태 탭 '계산식 보기' 에 표시할 수식
 
     # ---- 하위 클래스가 구현 ---------------------------------------------
     def kphi(self, ia, if_):
@@ -153,8 +168,16 @@ class DCMotor(MotorModel):
         ia = self.p["I_rated"]
         return float(self.kphi(ia, self.field_ss(ia, u)) * ia)
 
+    def _unpack(self, X):
+        """상태 배열 → (ia, if, ω). 직권처럼 계자 상태가 없는 모델은 재정의."""
+        return X[0], X[1], X[2]
+
+    def initial_state(self, u, field_preexcited=True):
+        if_ = float(self.field_ss(0.0, u)) if field_preexcited else 0.0
+        return np.array([0.0, if_, 0.0])
+
     def outputs(self, X, u) -> dict:
-        ia, if_, w = X[0], X[1], X[2]
+        ia, if_, w = self._unpack(X)
         k = self.kphi(ia, if_)
         E = k * w
         R = self.R_arm(u)
@@ -203,7 +226,9 @@ class DCMotor(MotorModel):
             if ok[j] and ok[j + 1] and np.sign(f[j]) != np.sign(f[j + 1]):
                 r = brentq(lambda i: float(self._residual(i, u)), grid[j], grid[j + 1],
                            xtol=1e-12)
-                roots.append(r)
+                # Kφ = 0 (속도 무한대) 를 지나며 부호가 바뀐 가짜 근은 버린다
+                if abs(float(self._residual(r, u))) < 1e-6 * max(1.0, abs(u.TL)):
+                    roots.append(r)
             elif ok[j] and f[j] == 0.0:
                 roots.append(grid[j])
         cands = []
@@ -213,24 +238,40 @@ class DCMotor(MotorModel):
                 cands.append(op)
         if not cands:
             return None
-        # 안정한 해를 우선, 그 중 속도가 가장 높은 해
-        cands.sort(key=lambda o: (not o.stable, -o.omega))
+        # 안정한 해를 우선, 그 중 전류가 가장 작은 해 (보통 운전하려는 점)
+        cands.sort(key=lambda o: (not o.stable, abs(o.ia)))
         return cands[0]
 
     def _make_op(self, ia, u) -> OperatingPoint:
         if_, k, w, te = (float(v) for v in self._ss_curve(ia, u))
-        # 안정 판별: 속도–토크 곡선 기울기 dTe/dω < B 이면 안정
-        d = 1e-6 * max(abs(ia), 1.0)
-        _, _, w1, t1 = self._ss_curve(ia - d, u)
-        _, _, w2, t2 = self._ss_curve(ia + d, u)
-        slope = (t2 - t1) / (w2 - w1) if w2 != w1 else -np.inf
-        stable = bool(slope - self.p["B"] < 0)
+        stable = self.is_stable(ia, if_, w, u)
         losses = {k_: float(v) for k_, v in self.losses(ia, if_, w, u).items()}
         return OperatingPoint(
             omega=w, ia=float(ia), if_=if_, il=float(self.line_current(ia, if_)),
             kphi=k, E=k * w, Te=te, TL=u.TL, V=u.V,
             P_in=float(self.input_power(ia, if_, u)), P_out=u.TL * w,
             losses=losses, stable=stable)
+
+    def state_vector(self, ia, if_, w):
+        """(ia, if, ω) → 이 모델의 상태 벡터."""
+        return np.array([ia, if_, w], dtype=float)
+
+    def eigenvalues(self, ia, if_, w, u):
+        """운전점에서 선형화한 시스템 행렬의 고유값 (수치 야코비안)."""
+        x0 = self.state_vector(ia, if_, w)
+        n = len(x0)
+        f0 = self.derivatives(0.0, x0, u)
+        Jm = np.zeros((n, n))
+        for j in range(n):
+            h = 1e-6 * max(abs(x0[j]), 1.0)
+            x1 = x0.copy()
+            x1[j] += h
+            Jm[:, j] = (self.derivatives(0.0, x1, u) - f0) / h
+        return np.linalg.eigvals(Jm)
+
+    def is_stable(self, ia, if_, w, u):
+        """모든 고유값의 실수부가 음수면 안정 (전기·기계 동특성 모두 포함)."""
+        return bool(np.max(self.eigenvalues(ia, if_, w, u).real) < 0)
 
     def no_load(self, u=None) -> OperatingPoint | None:
         u = u or self.default_inputs()

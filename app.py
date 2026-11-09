@@ -13,8 +13,8 @@ models = registry.all_models("DC")
 names = [m.name for m in models]
 choice = st.segmented_control("전동기 종류", names, default=names[0], key="motor_choice")
 model_cls = models[names.index(choice or names[0])]
-if len(models) < 4:
-    st.caption("현재 1단계: 타여자 전동기. 분권·직권·복권은 2단계에서 추가됩니다.")
+st.caption("종류를 바꾸면 사이드바와 4개 탭이 모두 그 전동기 기준으로 바뀝니다. "
+           "공통 파라미터(V, Ra, J 등)는 종류를 바꿔도 유지됩니다.")
 
 params, errors = render_sidebar(model_cls)
 if errors:
