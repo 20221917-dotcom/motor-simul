@@ -1,0 +1,150 @@
+<!doctype html><html><head><meta charset="utf-8"><style>/*CSS*/
+.wrap { display: grid; grid-template-columns: 300px 1fr; gap: 12px; }
+@media (max-width: 820px) { .wrap { grid-template-columns: 1fr; } }
+.side { display: flex; flex-direction: column; gap: 8px; }
+.side .ctl { min-width: 0; flex: none; }
+.row { display: flex; gap: 8px; } .side .row > .ctl { flex: 1 1 0; min-width: 0; }
+.btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.qb button { padding: 3px 8px; font-size: 12px; }
+canvas.s { height: 165px; }
+</style></head><body>
+<div class="readout" id="ro"></div>
+<div class="wrap">
+ <div class="side">
+  <div class="btns">
+    <button id="restart" class="primary">⟲ 처음부터 다시 (정지 상태)</button>
+    <button id="pause">⏸ 일시정지</button>
+  </div>
+  <div class="group"><h4>운전 (움직이는 즉시 반영)</h4>
+    <div class="ctl"><label>속도 지령 ω* <b id="lW"></b></label><input id="W" type="range"></div>
+    <div class="btns qb" id="quick"></div>
+    <div class="ctl"><label>부하 토크 TL <b id="lT"></b></label><input id="TL" type="range"></div>
+    <label class="chk"><input id="fric" type="checkbox" checked>마찰형 부하 (회전 반대 방향)</label>
+    <label class="chk"><input id="ol" type="checkbox">개루프로 운전 (피드백 없이 V = Kφ·ω*)</label>
+    <label class="chk"><input id="ghost" type="checkbox" checked>개루프 응답 같이 보기 (회색 점선)</label>
+  </div>
+  <div class="group"><h4>초퍼 · 전류 제한</h4>
+    <div class="ctl"><label>초퍼</label><select id="quad"><option value="4">4상한 (H-브리지)</option><option value="1">1상한 (강압형)</option></select></div>
+    <div class="ctl"><label>전류 제한 I_lim <b id="lI"></b></label><input id="Ilim" type="range"></div>
+  </div>
+  <div class="group"><h4>게인</h4>
+    <div class="row"><div class="ctl"><label>Kpω [A·s/rad]</label><input id="Kpw" type="number" step="any"></div>
+      <div class="ctl"><label>Kiω [A/rad]</label><input id="Kiw" type="number" step="any"></div></div>
+    <div class="row"><div class="ctl"><label>Kpi [V/A]</label><input id="Kpi" type="number" step="any"></div>
+      <div class="ctl"><label>Kii [V/(A·s)]</label><input id="Kii" type="number" step="any"></div></div>
+    <div class="row"><div class="ctl"><label>전류 대역 ωci [rad/s]</label><input id="wci" type="number" value="1000"></div>
+      <div class="ctl"><label>속도 대역 ωcs [rad/s]</label><input id="wcs" type="number" value="50"></div></div>
+    <div class="btns" style="margin-top:6px"><button id="rec">추천 게인 적용</button></div>
+    <label class="chk"><input id="aw" type="checkbox" checked>안티와인드업</label>
+    <label class="chk"><input id="ff" type="checkbox" checked>역기전력 피드포워드</label>
+    <div class="note" id="gnote"></div>
+  </div>
+  <div class="group"><h4>보기</h4>
+    <div class="row"><div class="ctl"><label>재생 속도</label><select id="spd">
+      <option value="0.05">1/20 배</option><option value="0.1">1/10 배</option>
+      <option value="0.25" selected>1/4 배</option><option value="0.5">1/2 배</option><option value="1">실시간</option></select></div>
+    <div class="ctl"><label>화면 폭</label><select id="win">
+      <option value="0.5">0.5 s</option><option value="1">1 s</option><option value="2" selected>2 s</option><option value="4">4 s</option></select></div></div>
+  </div>
+ </div>
+ <div>
+  <canvas class="s" id="cW"></canvas><canvas class="s" id="cI"></canvas>
+  <canvas class="s" id="cV"></canvas><canvas class="s" id="cT"></canvas>
+ </div>
+</div>
+<script>/*ENGINE*/</script>
+<script>/*CHARTS*/</script>
+<script>
+const CFG = /*CONFIG*/;
+const $ = (id) => document.getElementById(id);
+const RPM = 60 / (2 * Math.PI);
+const K = CFG.K, P = CFG.p;
+const wMaxRpm = Math.ceil(P.V / K * RPM / 100) * 100;
+
+// ---- 입력 초기값 ----
+$("W").min = -wMaxRpm; $("W").max = wMaxRpm; $("W").step = 10; $("W").value = CFG.wRefRpm;
+const tlMax = Math.max(1, Math.round(2 * CFG.Trated)); $("TL").min = 0; $("TL").max = tlMax; $("TL").step = 0.5; $("TL").value = 0;
+$("Ilim").min = Math.max(1, Math.round(0.25 * CFG.Irated)); $("Ilim").max = Math.round(5 * CFG.Irated); $("Ilim").step = 1;
+$("Ilim").value = Math.round(2 * CFG.Irated);
+[[Math.round(0.85 * wMaxRpm / 100) * 100], [Math.round(0.5 * wMaxRpm / 100) * 100], [0], [-Math.round(0.7 * wMaxRpm / 100) * 100]].forEach(([v]) => {
+  const b = document.createElement("button"); b.textContent = (v > 0 ? "+" : "") + v + " rpm";
+  b.onclick = () => { $("W").value = v; apply(); }; $("quick").appendChild(b);
+});
+function setGains(g) { ["Kpw", "Kiw", "Kpi", "Kii"].forEach((k) => { $(k).value = +g[k].toPrecision(4); }); }
+setGains(DCEngine.recommendedGains(P, K, 1000, 50));
+
+function cfgNow() {
+  return {
+    Ts: CFG.Ts, wRef: +$("W").value / RPM, TL: +$("TL").value, friction: $("fric").checked,
+    quadrants: +$("quad").value, Ilim: +$("Ilim").value,
+    Kpw: +$("Kpw").value, Kiw: +$("Kiw").value, Kpi: +$("Kpi").value, Kii: +$("Kii").value,
+    aw: $("aw").checked, ff: $("ff").checked, openLoop: $("ol").checked,
+  };
+}
+const sim = new DCEngine.CascadeSim(P, K, cfgNow());
+const ghost = new DCEngine.CascadeSim(P, K, Object.assign(cfgNow(), { openLoop: true }));
+
+function apply() {
+  const c = cfgNow();
+  sim.set(c); ghost.set(Object.assign({}, c, { openLoop: true }));
+  $("lW").textContent = (+$("W").value).toFixed(0) + " rpm";
+  $("lT").textContent = c.TL.toFixed(1) + " N·m";
+  $("lI").textContent = c.Ilim.toFixed(0) + " A";
+  sI.hlines = [{ y: c.Ilim, color: "#d62828" }, { y: c.quadrants === 1 ? 0 : -c.Ilim, color: "#d62828" }];
+  const wci = +$("wci").value, wcs = +$("wcs").value;
+  let msg = `Kφ = ${K.toFixed(3)} V·s/rad, La/Ra = ${(P.La / P.Ra * 1000).toFixed(1)} ms.`;
+  if (wcs > wci / 5) msg += " ⚠️ 속도 대역이 전류 대역의 1/5 보다 큽니다.";
+  $("gnote").textContent = msg;
+  $("ghost").disabled = c.openLoop;
+}
+document.querySelectorAll("input,select").forEach((el) => el.addEventListener("input", apply));
+$("rec").onclick = () => { setGains(DCEngine.recommendedGains(P, K, +$("wci").value, +$("wcs").value)); apply(); };
+
+let paused = false;
+$("pause").onclick = () => { paused = !paused; $("pause").textContent = paused ? "▶ 계속" : "⏸ 일시정지"; };
+$("restart").onclick = () => { sim.reset(); ghost.reset(); [sW, sI, sV, sT].forEach((s) => s.clear()); nextSample = 0; };
+
+// ---- 그래프 ----
+const sW = new RTCharts.Strip($("cW"), [
+  { name: "지령 ω*", color: "#e9c46a", width: 3 }, { name: "실제 ω", color: "#264653" },
+  { name: "개루프", color: "#9aa0a6", dash: true }], { title: "속도 [rpm]", minSpan: 100 });
+const sI = new RTCharts.Strip($("cI"), [
+  { name: "지령 Ia*", color: "#e9c46a", width: 3 }, { name: "실제 Ia", color: "#e76f51" },
+  { name: "개루프", color: "#9aa0a6", dash: true }], { title: "전기자 전류 [A]  (빨간 점선: 전류 제한)", minSpan: 10 });
+const sV = new RTCharts.Strip($("cV"), [
+  { name: "va", color: "#1d3557" }, { name: "E = Kφω", color: "#2a9d8f", dash: true }], { title: "전기자 전압 [V]", minSpan: 20 });
+const sT = new RTCharts.Strip($("cT"), [
+  { name: "Te", color: "#2a9d8f" }, { name: "TL", color: "#6c757d", dash: true }], { title: "토크 [N·m]", minSpan: 5 });
+apply();
+
+let last = performance.now(), nextSample = 0;
+function frame(now) {
+  const dtWall = Math.min((now - last) / 1000, 0.05); last = now;
+  const win = +$("win").value;
+  if (!paused) {
+    const dtSim = dtWall * +$("spd").value, nsub = 6;
+    const showGhost = $("ghost").checked && !$("ol").checked;
+    for (let k = 0; k < nsub; k++) {
+      sim.advance(dtSim / nsub); ghost.advance(dtSim / nsub);   // 개루프는 항상 같이 계산 (표시만 선택)
+      const o = sim.out();
+      if (o.t >= nextSample) {
+        const g = showGhost ? ghost.out() : { w: NaN, ia: NaN };
+        sW.push(o.t, [o.wRef * RPM, o.w * RPM, g.w * RPM]);
+        sI.push(o.t, [o.iaRef, o.ia, g.ia]);
+        sV.push(o.t, [o.va, o.E]);
+        sT.push(o.t, [o.Te, o.TL]);
+        nextSample = o.t + win / 600;
+      }
+    }
+  }
+  const o = sim.out();
+  [sW, sI, sV, sT].forEach((s) => s.draw(o.t, win));
+  const err = (o.wRef - o.w) * RPM;
+  $("ro").innerHTML = `<span>시각 <b>${o.t.toFixed(3)} s</b></span><span>ω* <b>${(o.wRef * RPM).toFixed(0)} rpm</b></span>` +
+    `<span>ω <b>${(o.w * RPM).toFixed(1)} rpm</b></span><span>오차 <b>${err.toFixed(1)} rpm</b></span>` +
+    `<span>Ia <b>${o.ia.toFixed(2)} A</b></span><span>va <b>${o.va.toFixed(1)} V</b></span>` +
+    `<span>Te <b>${o.Te.toFixed(2)} N·m</b></span><span>TL <b>${o.TL.toFixed(2)} N·m</b></span>`;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script></body></html>

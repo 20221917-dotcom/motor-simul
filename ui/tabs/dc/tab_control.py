@@ -7,6 +7,7 @@ import streamlit as st
 from control.cascade import ControlConfig, run_cascade
 from control.tuning import current_gains, speed_gains
 from core.units import to_rad_s, to_rpm
+from ui import realtime
 from ui.diagrams import control_block_diagram
 from ui.plots import info_metric, style, PALETTE
 
@@ -194,11 +195,29 @@ def render(model, params):
                  r"K_{i\omega} = \frac{K_{p\omega}\,\omega_{cs}}{4}")
         st.caption(f"현재 Kφ = {kphi:.3f} V·s/rad, 전기자 시정수 La/Ra = "
                    f"{params['La'] / params['Ra'] * 1000:.1f} ms")
-    st.markdown("#### 설정")
-    cfg = _settings(params, kphi)
-    items = tuple(sorted(cfg.items()))
-    p_items = tuple(sorted(params.items()))
-    r = _run(p_items, kphi, items, False)
-    ro = _run(p_items, kphi, items, True) if st.session_state.ct_ol else None
-    _summary(r, ro, cfg, params)
-    st.plotly_chart(_plot(r, ro, cfg), use_container_width=True)
+    st.markdown("#### 실시간 제어 실험")
+    st.caption("계산이 브라우저에서 실시간으로 돌아갑니다. 속도 지령·부하·게인·전류 제한·초퍼 종류를 "
+               "바꾸면 **그 순간부터** 반영되어 현재 상태에서 어떻게 반응하는지 볼 수 있습니다. "
+               "처음부터 보려면 **⟲ 처음부터 다시** 를 누르세요.")
+    realtime.render(realtime.control_html(params, kphi), height=800)
+    with st.expander("해 볼 실험", expanded=False):
+        st.markdown("""
+1. **전류 제한**: 지령을 0 → +1000 rpm 으로 바꾸면 전류가 I_lim 에 붙은 채로 일정 가속합니다.
+   I_lim 슬라이더를 줄이면 가속이 느려집니다.
+2. **부하 외란**: 정속 중 TL 을 올리면 속도가 잠깐 처졌다가 PI 의 적분 동작으로 지령에 돌아옵니다.
+   회색 점선(개루프)은 처진 채로 남습니다.
+3. **안티와인드업**: 끄고 큰 속도 지령을 주면 전류 제한에 걸린 동안 적분기가 쌓여 오버슈트가 커집니다.
+4. **역회전 / 1상한**: +1000 → −700 rpm. 4상한은 회생 제동 후 역회전, 1상한은 음의 전류를 못 내서
+   마찰로만 감속하고 0 rpm 에서 멈춥니다.
+5. **게인**: Kpω 를 크게/작게 하거나 ωcs 를 ωci 에 가깝게 올려 진동이 생기는지 보세요.
+""")
+    st.markdown("#### 시나리오 시뮬레이션 (시각을 정해 한 번에 계산)")
+    with st.expander("지령 변경 시각, 부하 인가 시각을 정해 전체 응답을 한 그래프로 보기", expanded=False):
+        cfg = _settings(params, kphi)
+        items = tuple(sorted(cfg.items()))
+        p_items = tuple(sorted(params.items()))
+        r = _run(p_items, kphi, items, False)
+        ro = _run(p_items, kphi, items, True) if st.session_state.ct_ol else None
+        _summary(r, ro, cfg, params)
+        st.plotly_chart(_plot(r, ro, cfg), use_container_width=True)
+

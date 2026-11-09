@@ -1,18 +1,12 @@
 """탭 1. 원리 이해"""
-from dataclasses import replace
-
 import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
-import streamlit.components.v1 as components
 
-from concepts.animation import build_principle_figure
 from concepts.commutation import torque_waveforms, ripple_percent
-from core.simulate import simulate
+from ui import realtime
 from ui.diagrams import wiring_diagram
 from ui.plots import info_metric, style
-
-N_FRAMES, FRAME_MS = 80, 70
 
 
 def _equations():
@@ -25,60 +19,11 @@ def _equations():
 
 
 def _animation(model, params):
-    ss = st.session_state
-    u_nom = model.default_inputs()
-    # 회전 표시 속도 기준: 사이드바 부하에서의 운전 속도 (직권은 무부하 속도가 너무 큼)
-    op_ref = model.steady_state(u_nom) or model.no_load(u_nom)
-    w_scale = op_ref.omega if op_ref and op_ref.omega > 1 else 100.0
-    if_nom = float(model.field_ss(params["I_rated"], u_nom))
-    force_ref = float(model.kphi(params["I_rated"], if_nom) * params["I_rated"])
-    T_rated = model.rated_torque()
-
-    st.markdown("#### 슬로모션 단면 애니메이션")
-    st.caption("슬라이더를 바꾸면 **현재 상태에서 출발해** 미분방정식을 다시 풀고, "
-               "그 과도 응답을 천천히 재생합니다. 회전 속도는 눈에 보이도록 줄여서 그리며 "
-               "실제 값은 그림 위 숫자로 표시합니다.")
-    c1, c2, c3, c4 = st.columns(4)
-    V = c1.slider("전기자 전압 V [V]", 0.0, float(round(1.2 * params["V"])),
-                  float(params["V"]), step=5.0, key="pr_V")
-    field_ok = model.field_control_input in ("Vf", "Rfx")
-    fpct = c2.slider("계자 세기 [% 기준]", 20, 120, 100, step=5, key="pr_f",
-                     disabled=not field_ok,
-                     help="기준 계자 전류 대비 비율. 줄이면 계자 약화. "
-                          "분권·복권은 계자 조정 저항 Rfx 로 조정합니다. "
-                          "직권은 계자 전류 = 전기자 전류라 따로 조정하지 않습니다.")
-    TL = c3.slider("부하 토크 TL [N·m]", 0.0, float(round(2.0 * T_rated, 1)),
-                   float(min(max(params["TL"], 0.0), round(2.0 * T_rated, 1))),
-                   step=1.0, key="pr_TL")
-    win = c4.select_slider("관찰 구간 [s]", [0.2, 0.4, 0.6, 1.0, 1.5, 2.0], 0.6,
-                           key="pr_win")
-    b1, b2, _ = st.columns([1, 1, 3])
-    restart = b1.button("⟲ 정지 상태에서 다시 기동", use_container_width=True)
-    cont = b2.button("▶ 이어서 보기", use_container_width=True)
-
-    sig = (model.key, tuple(sorted(params.items())))
-    if ss.get("pr_sig") != sig or restart:
-        ss.pr_sig, ss.pr_x, ss.pr_theta, ss.pr_t = sig, None, 0.0, 0.0
-        ss.pr_last, ss.pr_html = None, None
-    cur = (V, fpct, TL, win)
-    if ss.get("pr_html") is None or cur != ss.get("pr_last") or cont:
-        u = model.with_field_ratio(u_nom, fpct / 100.0)
-        u = replace(u, V=V, TL=TL)
-        x0 = ss.pr_x if ss.pr_x is not None else model.initial_state(u)
-        res = simulate(model, u, win, x0=x0, n_points=800, max_step=win / 300)
-        fig, theta_end = build_principle_figure(res, ss.pr_theta, w_scale, force_ref, if_nom,
-                                                N_FRAMES, FRAME_MS, t_offset=ss.pr_t)
-        ss.pr_html = fig.to_html(include_plotlyjs=True, full_html=True, auto_play=True,
-                                 config={"displayModeBar": False})
-        ss.pr_x, ss.pr_theta, ss.pr_t = res.x[:, -1], theta_end, ss.pr_t + win
-        ss.pr_last = cur
-        ss.pr_end = {k: float(res[k][-1]) for k in ("rpm", "ia", "E", "v_R", "Te")}
-    components.html(ss.pr_html, height=620)
-    slow = (FRAME_MS / 1000) / (win / N_FRAMES)
-    e = ss.pr_end
-    st.caption(f"재생 속도: 실제의 1/{slow:.0f} (프레임당 {win / N_FRAMES * 1000:.1f} ms). "
-               f"구간 끝 상태 → 속도 {e['rpm']:.0f} rpm, Ia {e['ia']:.1f} A, "
-               f"E {e['E']:.0f} V, Ia·R {e['v_R']:.0f} V")
+    st.markdown("#### 실시간 단면 애니메이션")
+    st.caption("계산이 브라우저에서 실시간으로 돌아갑니다. 슬라이더를 움직이면 **지금 상태에서 "
+               "바로** 반응하고, 처음부터 보려면 **⟲ 정지 상태에서 다시 기동** 버튼을 누르세요. "
+               "재생 속도로 슬로모션 정도를 바꿀 수 있습니다.")
+    realtime.render(realtime.principle_html(model, params), height=720)
     with st.expander("그림 읽는 법", expanded=False):
         st.markdown("""
 - **⊙ / ⊗** : 도체 전류가 지면에서 나오는 / 들어가는 방향. 테두리 색은 연결된 **정류자편** 색과 같습니다.
