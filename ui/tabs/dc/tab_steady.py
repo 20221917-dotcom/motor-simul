@@ -6,6 +6,7 @@ from plotly.subplots import make_subplots
 import streamlit as st
 
 from core.units import to_rpm, fmt
+from ui.compare import VARIANTS, COLORS, build, label_of
 from ui.plots import info_metric, style, PALETTE
 
 
@@ -98,6 +99,82 @@ def _speed_torque(model, op, op_nl, u, params):
     return fig
 
 
+def _compare_section(model, params):
+    """여러 여자 방식의 속도–토크 곡선을 겹쳐 그리고 운전점 비교표를 만든다."""
+    st.markdown("#### 여자 방식 비교")
+    st.caption("체크한 방식의 곡선을 한 그래프에 겹칩니다. 공통 파라미터(V, Ra, La, J, B, TL, "
+               "정격 전류)는 사이드바 값을 같이 쓰고, 계자 파라미터는 각 종류에서 입력해 둔 값"
+               "(없으면 기본값)을 씁니다.")
+    me = label_of(model)
+    cols = st.columns(len(VARIANTS))
+    chosen = []
+    for c, (label, _, _) in zip(cols, VARIANTS):
+        if c.checkbox(label, value=True if label != "차동 복권" or me == label else False,
+                      key=f"cmp_{label}", disabled=label == me,
+                      help="지금 선택한 전동기는 항상 표시" if label == me else None):
+            chosen.append(label)
+    if me not in chosen:
+        chosen.insert(0, me)
+
+    I_r = params["I_rated"]
+    fig = go.Figure()
+    rows, w_ops, w_all, t_all = [], [], [], [1.0]
+    for label in chosen:
+        m = build(label, model, params)
+        u = m.default_inputs()
+        op = m.steady_state(u)
+        nl = m.no_load(u)
+        te, w, _ = m.speed_torque_curve(u, ia_max=2.5 * I_r)
+        col = COLORS[label]
+        width = 4 if label == me else 2
+        fig.add_trace(go.Scatter(x=te, y=to_rpm(w), name=label, line=dict(color=col, width=width),
+                                 hovertemplate=f"{label}<br>%{{x:.1f}} N·m, %{{y:.0f}} rpm"))
+        if op:
+            fig.add_trace(go.Scatter(x=[op.Te], y=[op.rpm], mode="markers", showlegend=False,
+                                     marker=dict(size=12, color=col, symbol="diamond",
+                                                 line=dict(color="white", width=1.5)),
+                                     hovertemplate=f"{label} 운전점<br>%{{x:.1f}} N·m, "
+                                                   f"%{{y:.0f}} rpm<extra></extra>"))
+            w_ops.append(op.omega)
+        if len(w):
+            w_all.append(float(np.max(w)))
+            t_all.append(float(np.max(te)))
+        T_at_2I = float(m.kphi(2 * I_r, m.field_ss(2 * I_r, u)) * 2 * I_r)
+        reg = ((nl.omega - op.omega) / op.omega * 100) if (op and nl and op.omega > 0) else None
+        rows.append({
+            "방식": label,
+            "속도 [rpm]": round(op.rpm, 1) if op else None,
+            "Ia [A]": round(op.ia, 2) if op else None,
+            "IL [A]": round(op.il, 2) if op else None,
+            "Kφ [V·s/rad]": round(op.kphi, 3) if op else None,
+            "효율 [%]": round(op.eta * 100, 1) if op else None,
+            "무부하 속도 [rpm]": round(nl.rpm, 0) if nl else float("inf"),
+            "속도 변동률 [%]": round(reg, 2) if reg is not None else None,
+            "2×정격전류 토크 [N·m]": round(T_at_2I, 1),
+            "안정": ("예" if op.stable else "아니오") if op else "운전점 없음",
+        })
+    y_top = min(max(w_all + [1.0]), 3.0 * max(w_ops + [1.0])) * 1.1
+    wl = np.linspace(0, y_top, 60)   # 화면에 보이는 속도 범위까지만 부하선을 그린다
+    fig.add_trace(go.Scatter(x=params["TL"] + params["B"] * wl, y=to_rpm(wl), name="부하선",
+                             line=dict(color=PALETTE["TL"], dash="dash")))
+    style(fig, 460, xaxis_title="토크 [N·m]", yaxis_title="속도 [rpm]", hovermode="closest",
+          title=dict(text="속도–토크 곡선 비교 (◆ 운전점)", x=0.0))
+    fig.update_yaxes(range=[0, to_rpm(y_top)])
+    fig.update_xaxes(range=[0, 1.05 * max(t_all)])
+    st.plotly_chart(fig, use_container_width=True)
+    st.dataframe(rows, use_container_width=True, hide_index=True)
+    with st.expander("비교해서 볼 점"):
+        st.markdown("""
+- **타여자·분권**: 거의 수평인 직선. 부하가 변해도 속도가 일정합니다 (속도 변동률 수 %).
+  사이드바 기본값처럼 Vf = V 이면 두 곡선이 **완전히 겹칩니다** (계자 전류가 같으므로).
+  차이는 전압을 바꿀 때 드러납니다 → 동특성 탭 '전압 제어'로 비교해 보세요.
+- **직권**: 쌍곡선. 저부하에서 속도가 급격히 오르고(폭주), 같은 전류에서 토크가 가장 큽니다
+  (표의 **2×정격전류 토크** 열). → 견인·크레인용.
+- **가동 복권**: 둘의 중간. 분권보다 기동 토크가 크고 직권과 달리 무부하 속도가 정해져 있습니다.
+- **차동 복권**: 부하가 늘수록 속도가 오르기도 하는 특성. 직권 계자가 크면 불안정합니다.
+""")
+
+
 def _power_flow(op):
     fig = go.Figure()
     fig.add_trace(go.Bar(y=["입력"], x=[op.P_in], orientation="h", name="입력 전력",
@@ -152,10 +229,10 @@ def render(model, params):
     with c1:
         st.plotly_chart(_speed_torque(model, op, op_nl, u, params), use_container_width=True)
     with c2:
-        st.markdown("**비교할 여자 방식**")
-        st.caption("4가지 여자 방식 곡선 겹쳐 보기는 3단계에서 추가됩니다.")
         if op:
             st.plotly_chart(_power_flow(op), use_container_width=True)
     if op:
         _metrics(op, op_nl, model)
     st.plotly_chart(_load_sweep(model, u, params), use_container_width=True)
+    st.divider()
+    _compare_section(model, params)

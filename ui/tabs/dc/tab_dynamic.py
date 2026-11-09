@@ -7,6 +7,7 @@ import streamlit as st
 
 from core.simulate import simulate, Event
 from motors import registry
+from ui.compare import VARIANTS, COLORS, build, label_of
 from ui.plots import info_metric, style, mark_events, PALETTE
 
 CHANGE_OPTS = ["없음", "전기자 전압 변경", "계자 변경"]
@@ -163,6 +164,50 @@ def _plot(res, params, model):
     return fig
 
 
+def _compare(model, params, s, res_me):
+    st.markdown("#### 다른 여자 방식과 비교")
+    me = label_of(model)
+    others = [v[0] for v in VARIANTS if v[0] != me]
+    picked = st.multiselect("같은 시나리오로 겹쳐 볼 방식", others, key="dy_cmp",
+                            placeholder="비교할 방식을 고르세요")
+    if not picked:
+        st.caption("방식을 고르면 같은 기동·부하·변경 시나리오의 속도와 전류를 겹쳐 그립니다.")
+        return
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08,
+                        subplot_titles=("속도 [rpm]", "전기자 전류 Ia [A]"))
+    rows = []
+    I_r = params["I_rated"]
+    for label in [me] + picked:
+        if label == me:
+            r = res_me
+        else:
+            m = build(label, model, params)
+            r = _run(m.key, tuple(sorted(m.p.items())), s)
+        col = COLORS[label]
+        w = 3.5 if label == me else 2
+        fig.add_trace(go.Scatter(x=r.t, y=r["rpm"], name=label, legendgroup=label,
+                                 line=dict(color=col, width=w)), 1, 1)
+        fig.add_trace(go.Scatter(x=r.t, y=r["ia"], name=label, legendgroup=label,
+                                 showlegend=False, line=dict(color=col, width=w)), 2, 1)
+        k = int(np.argmax(np.abs(r["ia"])))
+        before = np.interp(s["tload"] - 1e-6, r.t, r["rpm"])
+        m_ = (r.t >= s["tload"])
+        rows.append({"방식": label,
+                     "최대 돌입 전류 [A]": round(float(r["ia"][k]), 1),
+                     "정격 대비 [배]": round(abs(float(r["ia"][k])) / I_r, 1),
+                     "최종 속도 [rpm]": round(float(r["rpm"][-1]), 1),
+                     "부하 인가 직전 속도 [rpm]": round(float(before), 1),
+                     "부하 후 최저 속도 [rpm]": round(float(r["rpm"][m_].min()), 1)
+                     if m_.any() else None})
+    style(fig, 560, side_legend=True)
+    mark_events(fig, res_me.events, rows=(1, 2))
+    fig.update_xaxes(title_text="시간 [s]", row=2, col=1)
+    st.plotly_chart(fig, use_container_width=True)
+    st.dataframe(rows, use_container_width=True, hide_index=True)
+    st.caption("직권은 기동 전류가 작아도 토크가 커서(T ∝ Ia²) 빨리 가속하고, "
+               "무부하 구간의 속도가 높습니다. 같은 기동 저항 설정은 모든 방식에 똑같이 적용됩니다.")
+
+
 def render(model, params):
     _init_state(params)
     st.caption("정지 상태에서 **무부하로 기동** → 지정 시각에 부하 인가 → 지정 시각에 전압 또는 "
@@ -171,3 +216,5 @@ def render(model, params):
     res = _run(model.key, tuple(sorted(params.items())), s)
     _summary(res, s, params)
     st.plotly_chart(_plot(res, params, model), use_container_width=True)
+    st.divider()
+    _compare(model, params, s, res)

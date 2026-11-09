@@ -25,3 +25,7 @@ pytest -q                 # 해석해 비교 테스트
 2. `param_specs()` 로 입력 파라미터 선언 → 사이드바는 자동 생성
 3. DC 여자 방식은 `kphi`, `field_ss`, `R_arm`, `line_current`, `input_power`, `losses`,
    `derivatives` 만 구현하면 정상상태·곡선·동특성이 공통 코드로 동작
+
+## 웹사이트 (Streamlit Community Cloud)
+share.streamlit.io 에서 이 저장소, 브랜치 `main`, 파일 `app.py` 로 배포합니다.
+`main` 에 올라온 변경은 사이트에 자동 반영됩니다.
