@@ -6,7 +6,7 @@
 """
 import streamlit as st
 
-from ui.pages import ac, concepts, dc_blocks, dc_sim
+from ui.pages import ac, bldc, concepts, dc_blocks, dc_sim
 
 st.set_page_config(page_title="전동기 학습 시뮬레이터", page_icon="⚙️", layout="wide")
 
@@ -15,10 +15,10 @@ pages = {
         st.Page(dc_sim.render, title="DC 전동기 시뮬레이터", icon="⚙️", default=True),
         st.Page(dc_blocks.render, title="제어 블록 편집기", icon="🧩", url_path="blocks"),
     ],
-    "교류 전동기 (준비 중)": [
-        st.Page(ac.induction, title="유도전동기", icon="🌀", url_path="induction"),
-        st.Page(ac.pmsm, title="PMSM (영구자석 동기)", icon="🧲", url_path="pmsm"),
-        st.Page(ac.bldc, title="BLDC", icon="⚡", url_path="bldc"),
+    "교류 전동기": [
+        st.Page(bldc.render, title="BLDC 전동기 시뮬레이터", icon="⚡", url_path="bldc"),
+        st.Page(ac.induction, title="유도전동기 (준비 중)", icon="🌀", url_path="induction"),
+        st.Page(ac.pmsm, title="PMSM (준비 중)", icon="🧲", url_path="pmsm"),
     ],
     "관련 개념": [
         st.Page(concepts.em_basics, title="전자기 기초 (힘·기전력)", icon="🧭", url_path="em-basics"),

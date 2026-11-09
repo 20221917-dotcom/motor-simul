@@ -35,14 +35,3 @@ def pmsm():
          r"T_e = \frac{3}{2}\frac{P}{2}\left[\lambda_f i_q + (L_d - L_q) i_d i_q\right]"],
         ["abc ↔ dq 좌표 변환 애니메이션", "dq 전류 제어 + 속도 제어 (DC 제어 탭과 비교)",
          "약계자 제어, MTPA", "SPWM / SVPWM 인버터 평균값 모델"])
-
-
-def bldc():
-    _coming(
-        "⚡ BLDC 전동기",
-        "구조는 PMSM 과 비슷하지만 역기전력이 **사다리꼴**이고, 홀 센서 위치에 따라 "
-        "두 상씩 120° 통전하는 **전자식 정류**를 한다. 기계식 정류자를 전자 스위치로 바꾼 DC 전동기로 볼 수 있다.",
-        [r"v_x = R i_x + L \frac{di_x}{dt} + e_x\quad(x = a, b, c)",
-         r"T_e = \frac{e_a i_a + e_b i_b + e_c i_c}{\omega_m}"],
-        ["홀 센서와 6스텝 통전 순서 애니메이션", "사다리꼴 역기전력과 토크 리플 (정류 리플)",
-         "DC 전동기 정류자와 전자식 정류 비교", "PWM 속도 제어"])

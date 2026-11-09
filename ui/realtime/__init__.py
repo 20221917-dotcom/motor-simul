@@ -23,6 +23,7 @@ def _build(template, config):
     html = html.replace("/*CHARTS*/", _read("charts.js"))
     html = html.replace("/*STRUCTURE*/", _read("structure.js"))
     html = html.replace("/*BLOCKS*/", _read("blocks.js"))
+    html = html.replace("/*BLDC*/", _read("bldc_engine.js"))
     return html.replace("/*CONFIG*/", json.dumps(config))
 
 
@@ -70,3 +71,19 @@ def editor_html(motors, default_motor, ctrl):
     """제어 블록 편집기. motors: {이름: {type, sigma, p, V, Vf, Rfx}}, ctrl: 템플릿 게인 계산용."""
     cfg = {"motors": motors, "defaultMotor": default_motor, "ctrl": ctrl}
     return _build("editor.html", cfg)
+
+
+def _bldc_p(params):
+    return {k: float(params[k]) for k in ["Vdc", "R", "L", "ke", "poles", "J", "B"]}
+
+
+def bldc_principle_html(params):
+    cfg = {"p": _bldc_p(params), "TL": params["TL"], "Irated": params["I_rated"],
+           "Trated": 2 * params["ke"] * params["I_rated"]}
+    return _build("bldc_principle.html", cfg)
+
+
+def bldc_control_html(params):
+    cfg = {"p": _bldc_p(params), "TL": params["TL"], "Irated": params["I_rated"],
+           "Trated": 2 * params["ke"] * params["I_rated"]}
+    return _build("bldc_control.html", cfg)

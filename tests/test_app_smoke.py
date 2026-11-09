@@ -39,7 +39,7 @@ def test_invalid_parameter_stops_with_error():
     ("ui.pages.concepts", "em_basics"), ("ui.pages.concepts", "commutation"),
     ("ui.pages.concepts", "magnetic"), ("ui.pages.concepts", "control_basics"),
     ("ui.pages.concepts", "symbols"), ("ui.pages.ac", "induction"),
-    ("ui.pages.ac", "pmsm"), ("ui.pages.ac", "bldc"),
+    ("ui.pages.ac", "pmsm"), ("ui.pages.bldc", "render"), ("ui.pages.dc_blocks", "render"),
 ])
 def test_other_pages_render(module, func):
     script = (f"import sys; sys.path.insert(0, {str(pathlib.Path(APP).parent)!r})\n"

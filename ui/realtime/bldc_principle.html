@@ -1,0 +1,221 @@
+<!doctype html><html><head><meta charset="utf-8"><style>/*CSS*/
+.wrap { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr); gap: 12px; }
+@media (max-width: 800px) { .wrap { grid-template-columns: 1fr; } }
+#mot { height: 400px; } #inv { height: 300px; } .s { height: 140px; }
+table.st { border-collapse: collapse; font-size: 12px; width: 100%; margin-top: 4px; }
+table.st td, table.st th { border: 1px solid #e3e3e3; padding: 2px 6px; text-align: center; }
+table.st tr.on { background: #fff3cd; font-weight: 600; }
+</style></head><body>
+<div class="bar">
+  <div class="ctl"><label>PWM 듀티 d (전압 = d·Vdc) <b id="lD"></b></label><input id="D" type="range" min="-100" max="100" step="1" value="100"></div>
+  <div class="ctl"><label>부하 토크 TL <b id="lT"></b></label><input id="TL" type="range"></div>
+  <div class="ctl"><label>홀 센서 위치 오차 <b id="lH"></b></label><input id="HO" type="range" min="-40" max="40" step="1" value="0"></div>
+  <div class="ctl" style="max-width:150px"><label>재생 속도</label><select id="spd">
+    <option value="0.0005">1/2000 배</option><option value="0.001">1/1000 배</option><option value="0.002" selected>1/500 배</option>
+    <option value="0.005">1/200 배</option><option value="0.01">1/100 배</option><option value="0.05">1/20 배</option></select></div>
+  <div class="ctl" style="max-width:130px"><label>그래프 폭</label><select id="win">
+    <option value="0.004">4 ms</option><option value="0.01" selected>10 ms</option><option value="0.03">30 ms</option>
+    <option value="0.1">100 ms</option><option value="0.5">0.5 s</option></select></div>
+  <div class="ctl" style="max-width:190px"><label>보기</label><select id="view">
+    <option value="eq" selected>2극 등가 (전기각 기준)</option><option value="real">실제 구조 (P극)</option></select></div>
+  <label class="chk"><input id="fric" type="checkbox">마찰형 부하</label>
+  <label class="chk"><input id="labels" type="checkbox" checked>이름 표시</label>
+  <button id="pause">⏸ 일시정지</button>
+  <button id="restart" class="primary">⟲ 정지 상태에서 다시 기동</button>
+</div>
+<div class="readout" id="ro"></div>
+<div class="wrap">
+  <div><canvas id="mot"></canvas><div class="note" id="mnote"></div>
+       <canvas id="inv"></canvas><table class="st" id="tbl"></table></div>
+  <div><canvas class="s" id="cE"></canvas><canvas class="s" id="cI"></canvas>
+       <canvas class="s" id="cT"></canvas><canvas class="s" id="cW"></canvas></div>
+</div>
+<script>/*BLDC*/</script>
+<script>/*CHARTS*/</script>
+<script>
+const CFG = /*CONFIG*/;
+const $ = (id) => document.getElementById(id);
+const RPM = 60 / (2 * Math.PI), DEG = Math.PI / 180;
+const P = CFG.p, pp = Math.round(P.poles / 2);
+const sim = new BLDCEngine.BLDCSim(P);
+const PH = ["A", "B", "C"], PCOL = ["#d62828", "#2a9d3a", "#1d4ed8"];
+const BETA = [180 * DEG, 300 * DEG, 60 * DEG];      // 2극 등가: 상 코일 축 (전기각)
+const HALL_POS = [60 * DEG, 180 * DEG, 300 * DEG];   // 홀 센서 위치 (전기각)
+const SW = [["Q1", "Q4"], ["Q3", "Q6"], ["Q5", "Q2"]];
+const STEPS = [4, 6, 2, 3, 1, 5];
+
+// ---- 입력 ----
+const tlMax = Math.max(0.1, +(2 * CFG.Trated).toPrecision(2));
+$("TL").min = 0; $("TL").max = tlMax; $("TL").step = tlMax / 100; $("TL").value = Math.min(Math.max(CFG.TL, 0), tlMax);
+function apply() {
+  const d = +$("D").value / 100, TL = +$("TL").value, ho = +$("HO").value;
+  sim.set({ duty: d, TL, hallOffset: ho * DEG, friction: $("fric").checked });
+  $("lD").textContent = `${(d * 100).toFixed(0)} % (${(d * P.Vdc).toFixed(1)} V)`;
+  $("lT").textContent = TL.toPrecision(3) + " N·m";
+  $("lH").textContent = ho + "° (전기각)";
+}
+["D", "TL", "HO", "fric"].forEach((id) => $(id).addEventListener("input", apply));
+apply();
+let paused = false;
+$("pause").onclick = () => { paused = !paused; $("pause").textContent = paused ? "▶ 계속" : "⏸ 일시정지"; };
+$("restart").onclick = () => { sim.reset(); [sE, sI, sT, sW].forEach((s) => s.clear()); nextSample = 0; };
+
+// ---- 그래프 ----
+const sE = new RTCharts.Strip($("cE"), PH.map((n, k) => ({ name: "e" + n.toLowerCase(), color: PCOL[k] })), { title: "상 역기전력 [V] (사다리꼴)", minSpan: 1 });
+const sI = new RTCharts.Strip($("cI"), PH.map((n, k) => ({ name: "i" + n.toLowerCase(), color: PCOL[k] })), { title: "상전류 [A]", minSpan: 1 });
+const sT = new RTCharts.Strip($("cT"), [{ name: "Te", color: "#2a9d8f" }, { name: "TL", color: "#6c757d", dash: true }], { title: "토크 [N·m] (정류 리플)", minSpan: 0.05 });
+const sW = new RTCharts.Strip($("cW"), [{ name: "속도", color: "#264653" }], { title: "속도 [rpm]", minSpan: 10 });
+
+// ---- 그림 도구 ----
+function M(W, H, half) { const S = Math.min(W, H) / (2 * half), cx = W / 2, cy = H / 2 + 6; return { S, cx, cy, P: (r, a) => [cx + r * S * Math.cos(a), cy - r * S * Math.sin(a)] }; }
+function sector(ctx, m, r0, r1, a0, a1, fill, stroke) {
+  ctx.beginPath(); ctx.arc(m.cx, m.cy, r1 * m.S, -a0, -a1, true); ctx.arc(m.cx, m.cy, r0 * m.S, -a1, -a0, false); ctx.closePath();
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.stroke(); }
+}
+function poleColor(i, Iref) {   // i > 0 → 이빨 면이 S(파랑), i < 0 → N(빨강)
+  const a = Math.min(1, Math.abs(i) / Iref);
+  if (Math.abs(i) < 1e-3) return "#c9ced4";
+  return i > 0 ? `rgba(59,125,216,${0.25 + 0.75 * a})` : `rgba(217,83,79,${0.25 + 0.75 * a})`;
+}
+function arrow(ctx, x1, y1, x2, y2, col, w) {
+  const L = Math.hypot(x2 - x1, y2 - y1); if (L < 4) return;
+  const ux = (x2 - x1) / L, uy = (y2 - y1) / L, hd = 12;
+  ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = w;
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2 - ux * hd, y2 - uy * hd); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x2, y2); ctx.lineTo(x2 - ux * hd - uy * 6, y2 - uy * hd + ux * 6); ctx.lineTo(x2 - ux * hd + uy * 6, y2 - uy * hd - ux * 6); ctx.closePath(); ctx.fill();
+}
+function txt(ctx, s, x, y, o) { ctx.font = (o && o.font) || "12px system-ui"; ctx.fillStyle = (o && o.color) || "#222"; ctx.textAlign = (o && o.align) || "center"; ctx.textBaseline = "middle"; ctx.fillText(s, x, y); }
+
+// ---- 전동기 그림 ----
+function drawMotor(o) {
+  const [ctx, W, H] = RTCharts.setupCanvas($("mot")); ctx.clearRect(0, 0, W, H);
+  const m = M(W, H, 2.15), lab = $("labels").checked, Iref = Math.max(CFG.Irated, 1);
+  const i3 = [o.ia, o.ib, o.ic], eq = $("view").value === "eq";
+  sector(ctx, m, 1.75, 2.0, 0, 2 * Math.PI, "#8a929b");              // 고정자 계철
+  if (eq) {
+    // 이빨 6개: 상 x 의 코일 축 β 와 반대편 β+180°
+    for (let k = 0; k < 3; k++) for (const [off, sg] of [[0, 1], [Math.PI, -1]]) {
+      const a = BETA[k] + off, half = 22 * DEG;
+      sector(ctx, m, 1.12, 1.76, a - 0.35 * half, a + 0.35 * half, "#9aa3ad", "#666");   // 이빨 몸통
+      sector(ctx, m, 1.12, 1.26, a - half, a + half, poleColor(sg * i3[k], Iref), "#555"); // 이빨 면 (극성)
+      sector(ctx, m, 1.3, 1.7, a - 0.75 * half, a - 0.38 * half, PCOL[k], null);           // 코일
+      sector(ctx, m, 1.3, 1.7, a + 0.38 * half, a + 0.75 * half, PCOL[k], null);
+      const [lx, ly] = m.P(1.88, a); txt(ctx, PH[k] + (sg < 0 ? "′" : ""), lx, ly, { font: "bold 13px system-ui", color: "#fff" });
+    }
+    // 회전자 (2극 등가: N 중심이 θe)
+    sector(ctx, m, 0.25, 1.0, o.te - Math.PI / 2, o.te + Math.PI / 2, "#e05a55", "#444");
+    sector(ctx, m, 0.25, 1.0, o.te + Math.PI / 2, o.te + 1.5 * Math.PI, "#4a86d8", "#444");
+    const [nx, ny] = m.P(0.62, o.te), [sx, sy] = m.P(0.62, o.te + Math.PI);
+    txt(ctx, "N", nx, ny, { font: "bold 18px system-ui", color: "#fff" }); txt(ctx, "S", sx, sy, { font: "bold 18px system-ui", color: "#fff" });
+    // 홀 센서
+    for (let k = 0; k < 3; k++) {
+      const a = HALL_POS[k] - sim.u.hallOffset, on = (o.code >> (2 - k)) & 1;
+      const [hx, hy] = m.P(1.06, a);
+      ctx.fillStyle = on ? "#facc15" : "#e5e7eb"; ctx.strokeStyle = "#555"; ctx.lineWidth = 1;
+      ctx.fillRect(hx - 9, hy - 6, 18, 12); ctx.strokeRect(hx - 9, hy - 6, 18, 12);
+      txt(ctx, "H" + "abc"[k], hx, hy, { font: "9px system-ui" });
+    }
+    // 고정자 합성 자계 (기자력) 벡터
+    let fx = 0, fy = 0; for (let k = 0; k < 3; k++) { fx += i3[k] * Math.cos(BETA[k]); fy += i3[k] * Math.sin(BETA[k]); }
+    const fm = Math.hypot(fx, fy), L = Math.min(1.0, fm / (1.5 * Iref)) * 0.95;
+    if (fm > 1e-3) { const a = Math.atan2(fy, fx), [x2, y2] = m.P(L, a); arrow(ctx, m.cx, m.cy, x2, y2, "#7c3aed", 4); }
+    const [rx, ry] = m.P(0.95, o.te); arrow(ctx, m.cx, m.cy, rx, ry, "rgba(0,0,0,0.55)", 2);
+    if (lab) {
+      txt(ctx, "보라: 고정자 자계 (Σ 상전류 × 코일 축)", 6, 12, { align: "left", color: "#7c3aed" });
+      txt(ctx, "검정: 회전자 자석 N 방향 (θe)", 6, 28, { align: "left", color: "#333" });
+      const lead = fm > 1e-3 ? (((Math.atan2(fy, fx) - o.te) / DEG) % 360 + 540) % 360 - 180 : 0;
+      txt(ctx, `자계가 회전자보다 ${lead.toFixed(0)}° 앞섬 (90° 일 때 토크 최대)`, 6, 44, { align: "left", color: "#555" });
+    }
+    $("mnote").textContent = `2극 등가 그림입니다. 실제 ${P.poles}극 전동기에서는 기계적으로 이 그림의 1/${pp} 속도로 돕니다. 이빨 색: 파랑 = S극, 빨강 = N극 (진하기 ∝ 전류). 노란 홀 센서 = 1.`;
+  } else {
+    const S = 3 * pp, toothW = Math.PI / S;
+    for (let k = 0; k < S; k++) {
+      const a = Math.PI / pp + k * 2 * Math.PI / S, ph = ((k % 3) + 3) % 3;      // 이빨 순서 A, B, C 반복
+      sector(ctx, m, 1.12, 1.76, a - 0.32 * toothW, a + 0.32 * toothW, "#9aa3ad", "#666");
+      sector(ctx, m, 1.12, 1.24, a - 0.85 * toothW, a + 0.85 * toothW, poleColor(i3[ph], Iref), "#555");
+      sector(ctx, m, 1.3, 1.7, a - 0.7 * toothW, a - 0.36 * toothW, PCOL[ph], null);
+      sector(ctx, m, 1.3, 1.7, a + 0.36 * toothW, a + 0.7 * toothW, PCOL[ph], null);
+      const [lx, ly] = m.P(1.88, a); txt(ctx, PH[ph], lx, ly, { font: "bold 11px system-ui", color: "#fff" });
+    }
+    for (let j = 0; j < P.poles; j++) {
+      const c = o.thm + j * 2 * Math.PI / P.poles, hw = Math.PI / P.poles * 0.92;
+      sector(ctx, m, 0.72, 1.0, c - hw, c + hw, j % 2 === 0 ? "#e05a55" : "#4a86d8", "#444");
+      const [mx, my] = m.P(0.86, c); txt(ctx, j % 2 === 0 ? "N" : "S", mx, my, { font: "bold 11px system-ui", color: "#fff" });
+    }
+    sector(ctx, m, 0.2, 0.72, 0, 2 * Math.PI, "#b9c0c8", "#666");
+    for (let k = 0; k < 3; k++) {
+      const a = (HALL_POS[k] - sim.u.hallOffset) / pp, on = (o.code >> (2 - k)) & 1, [hx, hy] = m.P(1.06, a);
+      ctx.fillStyle = on ? "#facc15" : "#e5e7eb"; ctx.fillRect(hx - 8, hy - 5, 16, 10); ctx.strokeStyle = "#555"; ctx.strokeRect(hx - 8, hy - 5, 16, 10);
+    }
+    const [kx, ky] = m.P(0.15, o.thm); ctx.beginPath(); ctx.arc(m.cx, m.cy, 0.2 * m.S, 0, 2 * Math.PI); ctx.fillStyle = "#444"; ctx.fill();
+    ctx.beginPath(); ctx.arc(kx, ky, 3, 0, 2 * Math.PI); ctx.fillStyle = "#ddd"; ctx.fill();
+    $("mnote").textContent = `실제 구조: ${P.poles}극 자석 회전자, ${S}슬롯 집중권 (이빨마다 A·B·C 순서). 기계각으로 실제 속도대로 회전합니다.`;
+  }
+}
+
+// ---- 인버터 그림 ----
+function drawInverter(o) {
+  const [ctx, W, H] = RTCharts.setupCanvas($("inv")); ctx.clearRect(0, 0, W, H);
+  const top = 34, bot = H - 46, mid = (top + bot) / 2, x0 = 70, dx = (W - 110) / 3;
+  ctx.strokeStyle = "#333"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(30, top); ctx.lineTo(W - 30, top); ctx.moveTo(30, bot); ctx.lineTo(W - 30, bot); ctx.stroke();
+  txt(ctx, `+Vdc (${P.Vdc} V)`, 34, top - 12, { align: "left" }); txt(ctx, "0 V", 34, bot + 12, { align: "left" });
+  const i3 = [o.ia, o.ib, o.ic];
+  for (let k = 0; k < 3; k++) {
+    const x = x0 + dx * (k + 0.5);
+    ctx.strokeStyle = "#333"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bot); ctx.stroke();
+    for (const [pos, isTop] of [[top + (mid - top) / 2, true], [mid + (bot - mid) / 2, false]]) {
+      const on = (isTop && k === o.H) || (!isTop && k === o.L);
+      const diode = o.mode === "three" && k === o.F && ((isTop && i3[k] < 0) || (!isTop && i3[k] > 0));
+      ctx.fillStyle = on ? "#22c55e" : diode ? "#f59e0b" : "#f3f4f6"; ctx.strokeStyle = "#555"; ctx.lineWidth = 1.2;
+      ctx.fillRect(x - 26, pos - 15, 52, 30); ctx.strokeRect(x - 26, pos - 15, 52, 30);
+      txt(ctx, SW[k][isTop ? 0 : 1], x, pos - 4, { font: "bold 12px system-ui" });
+      txt(ctx, on ? (isTop ? `PWM ${Math.abs(o.duty * 100).toFixed(0)}%` : "ON") : diode ? "다이오드" : "OFF", x, pos + 8, { font: "10px system-ui", color: on ? "#064e3b" : "#555" });
+    }
+    ctx.fillStyle = PCOL[k]; ctx.beginPath(); ctx.arc(x, mid, 5, 0, 2 * Math.PI); ctx.fill();
+    ctx.strokeStyle = PCOL[k]; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, mid); ctx.lineTo(x + 34, mid); ctx.stroke();
+    txt(ctx, `${PH[k]}상  ${i3[k] >= 0 ? "+" : ""}${i3[k].toFixed(1)} A`, x + 3, bot + 30, { color: PCOL[k], font: "bold 12px system-ui" });
+  }
+  const bits = [(o.code >> 2) & 1, (o.code >> 1) & 1, o.code & 1].join(" ");
+  txt(ctx, `홀 코드 Ha Hb Hc = ${bits}   → ${PH[o.H]}상 (+), ${PH[o.L]}상 (−) 통전` + (o.mode === "three" ? `,  ${PH[o.F]}상 환류 중` : ""), W / 2, 12, { font: "bold 12px system-ui" });
+}
+function renderTable(o) {
+  const rows = STEPS.map((c, i) => {
+    const [h, l] = BLDCEngine.COMM[c];
+    const bits = [(c >> 2) & 1, (c >> 1) & 1, c & 1].join("");
+    return `<tr class="${c === o.code ? "on" : ""}"><td>${i + 1}</td><td>${bits}</td><td>${SW[h][0]} + ${SW[l][1]}</td><td>${PH[h]} → ${PH[l]}</td></tr>`;
+  });
+  $("tbl").innerHTML = `<tr><th>단계</th><th>홀 HaHbHc</th><th>ON 스위치 (d ≥ 0)</th><th>전류 경로</th></tr>` + rows.join("");
+}
+
+// ---- 루프 ----
+let last = performance.now(), nextSample = 0, lastTbl = -1;
+function frame(now) {
+  const dtWall = Math.min((now - last) / 1000, 0.05); last = now;
+  const win = +$("win").value;
+  if (!paused) {
+    const dtSim = dtWall * +$("spd").value;
+    const n = Math.max(1, Math.round(dtSim / 1e-5));
+    for (let k = 0; k < n; k++) {
+      sim.step(dtSim / n);
+      if (sim.t >= nextSample) {
+        const o = sim.out();
+        sE.push(o.t, [o.ea, o.eb, o.ec]); sI.push(o.t, [o.ia, o.ib, o.ic]);
+        sT.push(o.t, [o.Te, o.TL]); sW.push(o.t, [o.w * RPM]);
+        nextSample = o.t + win / 500;
+      }
+    }
+  }
+  const o = sim.out();
+  if (nextSample > o.t + 1) nextSample = 0;
+  drawMotor(o); drawInverter(o);
+  if (o.code !== lastTbl) { renderTable(o); lastTbl = o.code; }
+  [sE, sI, sT, sW].forEach((s) => s.draw(o.t, win));
+  $("ro").innerHTML = `<span>시각 <b>${(o.t * 1000).toFixed(2)} ms</b></span><span>속도 <b>${(o.w * RPM).toFixed(0)} rpm</b></span>` +
+    `<span>전기각 θe <b>${(o.te / DEG).toFixed(0)}°</b></span><span>Te <b>${o.Te.toFixed(3)} N·m</b></span>` +
+    `<span>ia <b>${o.ia.toFixed(2)}</b> ib <b>${o.ib.toFixed(2)}</b> ic <b>${o.ic.toFixed(2)} A</b></span>` +
+    `<span>전기 주파수 <b>${(Math.abs(o.w) * pp / (2 * Math.PI)).toFixed(0)} Hz</b></span>`;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script></body></html>
