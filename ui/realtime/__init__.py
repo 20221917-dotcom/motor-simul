@@ -24,6 +24,8 @@ def _build(template, config):
     html = html.replace("/*STRUCTURE*/", _read("structure.js"))
     html = html.replace("/*BLOCKS*/", _read("blocks.js"))
     html = html.replace("/*BLDC*/", _read("bldc_engine.js"))
+    html = html.replace("/*AC*/", _read("ac_engine.js"))
+    html = html.replace("/*ACDRAW*/", _read("ac_draw.js"))
     return html.replace("/*CONFIG*/", json.dumps(config))
 
 
@@ -88,3 +90,37 @@ def bldc_control_html(params):
     cfg = {"p": _bldc_p(params), "TL": params["TL"], "Irated": params["I_rated"],
            "Trated": 2 * params["ke"] * params["I_rated"]}
     return _build("bldc_control.html", cfg)
+
+
+# ---------------------------------------------------------------- 교류 전동기
+def _im_cfg(model):
+    p = model.p
+    keys = ["V", "f", "Rs", "Rr", "Lls", "Llr", "Lm", "poles", "J", "B"]
+    Tmax, _ = model.max_torque()
+    Ls = p["Lls"] + p["Lm"]
+    psr = (2 / 3) ** 0.5 * p["V"] / (2 * 3.141592653589793 * p["f"]) * p["Lm"] / Ls
+    return {"p": {k: float(p[k]) for k in keys}, "TL": p["TL"], "Irated": p["I_rated"], "Tmax": Tmax, "psrNom": psr}
+
+
+def im_principle_html(model):
+    return _build("im_principle.html", _im_cfg(model))
+
+
+def im_control_html(model):
+    return _build("im_control.html", _im_cfg(model))
+
+
+def _pmsm_cfg(model):
+    p = model.p
+    keys = ["Vdc", "Rs", "Ld", "Lq", "lam", "poles", "J", "B"]
+    T0 = model.max_torque_at_speed(1.0)[0]
+    return {"p": {k: float(p[k]) for k in keys}, "TL": p["TL"], "Imax": p["Imax"], "Tmax": T0,
+            "nBase": model.base_speed() * 60 / (2 * 3.141592653589793)}
+
+
+def pmsm_principle_html(model):
+    return _build("pmsm_principle.html", _pmsm_cfg(model))
+
+
+def pmsm_control_html(model):
+    return _build("pmsm_control.html", _pmsm_cfg(model))

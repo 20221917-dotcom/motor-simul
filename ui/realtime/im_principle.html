@@ -1,0 +1,76 @@
+<!doctype html><html><head><meta charset="utf-8"><style>/*CSS*/
+.wrap { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr); gap: 12px; }
+@media (max-width: 800px) { .wrap { grid-template-columns: 1fr; } }
+#mot { height: 440px; } .s { height: 150px; }
+</style></head><body>
+<div class="bar">
+  <div class="ctl"><label>전원 주파수 f <b id="lF"></b></label><input id="F" type="range" min="1" max="120" step="1"></div>
+  <div class="ctl"><label>선간 전압 V <b id="lV"></b></label><input id="V" type="range" min="0" max="120" step="1" value="100"></div>
+  <div class="ctl"><label>부하 토크 TL <b id="lT"></b></label><input id="TL" type="range"></div>
+  <label class="chk"><input id="vf" type="checkbox" checked>V/f 일정 (전압 ∝ 주파수)</label>
+  <div class="ctl" style="max-width:130px"><label>재생 속도</label><select id="spd">
+    <option value="0.005">1/200 배</option><option value="0.01">1/100 배</option><option value="0.02" selected>1/50 배</option>
+    <option value="0.05">1/20 배</option><option value="0.1">1/10 배</option><option value="0.25">1/4 배</option></select></div>
+  <div class="ctl" style="max-width:120px"><label>그래프 폭</label><select id="win">
+    <option value="0.05">50 ms</option><option value="0.2" selected>0.2 s</option><option value="0.5">0.5 s</option><option value="1">1 s</option><option value="3">3 s</option></select></div>
+  <label class="chk"><input id="fric" type="checkbox">마찰형 부하</label>
+  <button id="pause">⏸ 일시정지</button><button id="restart" class="primary">⟲ 정지 상태에서 다시 기동</button>
+</div>
+<div class="readout" id="ro"></div>
+<div class="wrap">
+  <div><canvas id="mot"></canvas><div class="note">2극 등가 그림 (전기각 기준). 보라: 고정자 회전자계, 노란 점: 회전자 표시점,
+    도체 ⊙/⊗: 유도된 회전자 전류. 회전자계보다 회전자가 느리게 도는 차이(슬립) 때문에 회전자에 전류가 유도되어 토크가 납니다.</div></div>
+  <div><canvas class="s" id="cI"></canvas><canvas class="s" id="cW"></canvas><canvas class="s" id="cT"></canvas></div>
+</div>
+<script>/*AC*/</script><script>/*ACDRAW*/</script><script>/*CHARTS*/</script>
+<script>
+const CFG = /*CONFIG*/;
+const $ = (id) => document.getElementById(id), RPM = 60 / (2 * Math.PI), P = CFG.p;
+const sim = new ACEngine.IMSim(P), pp = sim.pp;
+$("F").value = P.f;
+const tlMax = Math.round(1.2 * CFG.Tmax); $("TL").min = 0; $("TL").max = tlMax; $("TL").step = tlMax / 200; $("TL").value = Math.min(CFG.TL, tlMax);
+function apply() {
+  const f = +$("F").value; if ($("vf").checked) $("V").value = Math.min(120, Math.round(100 * f / P.f));
+  const V = P.V * +$("V").value / 100, TL = +$("TL").value;
+  sim.set({ mode: "grid", f, V, TL, friction: $("fric").checked });
+  $("lF").textContent = `${f} Hz (동기속도 ${(120 * f / P.poles).toFixed(0)} rpm)`;
+  $("lV").textContent = `${V.toFixed(0)} V (${$("V").value} %)`; $("lT").textContent = TL.toFixed(1) + " N·m";
+}
+["F", "V", "TL", "vf", "fric"].forEach((id) => $(id).addEventListener("input", apply)); apply();
+let paused = false;
+$("pause").onclick = () => { paused = !paused; $("pause").textContent = paused ? "▶ 계속" : "⏸ 일시정지"; };
+$("restart").onclick = () => { sim.reset(); [sI, sW, sT].forEach((s) => s.clear()); nextSample = 0; };
+const sI = new RTCharts.Strip($("cI"), ["a", "b", "c"].map((n, k) => ({ name: "i" + n, color: ACDraw.PCOL[k] })), { title: "고정자 상전류 [A]", minSpan: 2 });
+const sW = new RTCharts.Strip($("cW"), [{ name: "동기속도 ns", color: "#9aa0a6", dash: true }, { name: "회전 속도 n", color: "#264653" }], { title: "속도 [rpm]", minSpan: 50 });
+const sT = new RTCharts.Strip($("cT"), [{ name: "Te", color: "#2a9d8f" }, { name: "TL", color: "#6c757d", dash: true }], { title: "토크 [N·m]", minSpan: 2 });
+function draw(o) {
+  const [ctx, W, H] = RTCharts.setupCanvas($("mot")); ctx.clearRect(0, 0, W, H);
+  const m = ACDraw.M(W, H, 2.1), Iref = Math.max(CFG.Irated * Math.SQRT2, 1);
+  ACDraw.stator(ctx, m, [o.ia, o.ib, o.ic], Iref);
+  ACDraw.cage(ctx, m, pp * o.thm, o.ira, o.irb, Iref);
+  const Ism = Math.hypot(o.isa, o.isb);
+  ACDraw.vec(ctx, m, Math.atan2(o.isb, o.isa), Math.min(1.0, Ism / (1.5 * Iref) + 0.25), "#7c3aed", 4);
+  ACDraw.vec(ctx, m, o.thr, Math.min(1.0, 0.35 + o.psr / (2 * CFG.psrNom)), "rgba(0,0,0,0.5)", 2, [6, 4]);
+  ACDraw.txt(ctx, "보라: 고정자 전류(기자력) 벡터 · 점선: 회전자 자속", 6, 12, { align: "left", color: "#555" });
+}
+let last = performance.now(), nextSample = 0;
+function frame(now) {
+  const dtWall = Math.min((now - last) / 1000, 0.05); last = now;
+  const win = +$("win").value;
+  if (!paused) {
+    const dtSim = dtWall * +$("spd").value, n = Math.max(1, Math.ceil(dtSim / 1e-4));
+    for (let k = 0; k < n; k++) {
+      sim.step(dtSim / n);
+      if (sim.t >= nextSample) { const o = sim.out(); const ns = 120 * sim.u.f / P.poles;
+        sI.push(o.t, [o.ia, o.ib, o.ic]); sW.push(o.t, [ns, o.w * RPM]); sT.push(o.t, [o.Te, o.TL]); nextSample = o.t + win / 600; }
+    }
+  }
+  const o = sim.out(); draw(o); [sI, sW, sT].forEach((s) => s.draw(o.t, win));
+  const ns = 120 * sim.u.f / P.poles, n = o.w * RPM, s = ns > 0 ? (ns - n) / ns : 0;
+  $("ro").innerHTML = `<span>시각 <b>${o.t.toFixed(3)} s</b></span><span>동기속도 <b>${ns.toFixed(0)} rpm</b></span><span>속도 <b>${n.toFixed(0)} rpm</b></span>` +
+    `<span>슬립 s <b>${(s * 100).toFixed(2)} %</b></span><span>회전자 전류 주파수 s·f <b>${(s * sim.u.f).toFixed(2)} Hz</b></span>` +
+    `<span>Te <b>${o.Te.toFixed(1)} N·m</b></span><span>상전류 <b>${o.Is.toFixed(1)} A</b> (실효)</span>`;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script></body></html>

@@ -1,0 +1,90 @@
+<!doctype html><html><head><meta charset="utf-8"><style>/*CSS*/
+.wrap { display: grid; grid-template-columns: 300px 1fr; gap: 12px; }
+@media (max-width: 820px) { .wrap { grid-template-columns: 1fr; } }
+.side { display: flex; flex-direction: column; gap: 8px; } .side .ctl { min-width: 0; flex: none; }
+.row { display: flex; gap: 8px; } .side .row > .ctl { flex: 1 1 0; min-width: 0; }
+.btns { display: flex; flex-wrap: wrap; gap: 6px; } .qb button { padding: 3px 8px; font-size: 12px; }
+canvas.s { height: 160px; } .foc, .vf { } .hide { display: none; }
+</style></head><body>
+<div class="readout" id="ro"></div>
+<div class="wrap"><div class="side">
+  <div class="btns"><button id="restart" class="primary">⟲ 처음부터 다시 (정지 상태)</button><button id="pause">⏸ 일시정지</button></div>
+  <div class="group"><h4>제어 방식</h4>
+    <div class="ctl"><select id="mode"><option value="vf">V/f 제어 (개루프)</option><option value="vfs">V/f + 슬립 보상</option><option value="foc" selected>벡터 제어 (간접 FOC)</option></select></div></div>
+  <div class="group"><h4>운전 (움직이는 즉시 반영)</h4>
+    <div class="ctl"><label>속도 지령 n* <b id="lW"></b></label><input id="W" type="range"></div>
+    <div class="btns qb" id="quick"></div>
+    <div class="ctl"><label>부하 토크 TL <b id="lT"></b></label><input id="TL" type="range"></div>
+    <label class="chk"><input id="fric" type="checkbox" checked>마찰형 부하</label></div>
+  <div class="group vf"><h4>V/f 설정</h4>
+    <div class="row"><div class="ctl"><label>가감속 [Hz/s]</label><input id="ramp" type="number" value="60"></div>
+      <div class="ctl"><label>저속 전압 보상 [V]</label><input id="boost" type="number" value="10"></div></div></div>
+  <div class="group foc"><h4>벡터 제어 설정</h4>
+    <div class="ctl"><label>전류 제한 (진폭) <b id="lI"></b></label><input id="Ilim" type="range"></div>
+    <div class="row"><div class="ctl"><label>Kpω</label><input id="Kpw" type="number" step="any"></div><div class="ctl"><label>Kiω</label><input id="Kiw" type="number" step="any"></div></div>
+    <div class="row"><div class="ctl"><label>Kpi [V/A]</label><input id="Kpi" type="number" step="any"></div><div class="ctl"><label>Kii</label><input id="Kii" type="number" step="any"></div></div>
+    <div class="row"><div class="ctl"><label>ωci [rad/s]</label><input id="wci" type="number" value="1500"></div><div class="ctl"><label>ωcs [rad/s]</label><input id="wcs" type="number" value="30"></div></div>
+    <div class="btns" style="margin-top:6px"><button id="rec">추천 게인 적용</button></div>
+    <label class="chk"><input id="ff" type="checkbox" checked>비간섭(피드포워드) 보상</label>
+    <label class="chk"><input id="aw" type="checkbox" checked>안티와인드업</label>
+    <label class="chk"><input id="fwk" type="checkbox" checked>기저 속도 위 약계자</label>
+    <div class="note" id="gnote"></div></div>
+  <div class="group"><h4>보기</h4><div class="row">
+    <div class="ctl"><label>재생 속도</label><select id="spd"><option value="0.05">1/20 배</option><option value="0.1" selected>1/10 배</option><option value="0.25">1/4 배</option><option value="0.5">1/2 배</option></select></div>
+    <div class="ctl"><label>화면 폭</label><select id="win"><option value="0.5">0.5 s</option><option value="1">1 s</option><option value="2" selected>2 s</option><option value="4">4 s</option></select></div></div></div>
+</div><div><canvas class="s" id="cW"></canvas><canvas class="s" id="cI"></canvas><canvas class="s" id="cF"></canvas><canvas class="s" id="cT"></canvas></div></div>
+<script>/*AC*/</script><script>/*CHARTS*/</script>
+<script>
+const CFG = /*CONFIG*/;
+const $ = (id) => document.getElementById(id), RPM = 60 / (2 * Math.PI), P = CFG.p, pp = Math.round(P.poles / 2);
+const nsr = 120 * P.f / P.poles, idr = ACEngine.imIdRated(P);
+$("W").min = -Math.round(1.5 * nsr); $("W").max = Math.round(1.5 * nsr); $("W").step = 10; $("W").value = Math.round(0.8 * nsr / 10) * 10;
+const tlMax = Math.round(1.2 * CFG.Tmax); $("TL").min = 0; $("TL").max = tlMax; $("TL").step = 0.5; $("TL").value = 0;
+$("Ilim").min = Math.ceil(idr * 1.2); $("Ilim").max = Math.round(6 * CFG.Irated * Math.SQRT2); $("Ilim").step = 1; $("Ilim").value = Math.round(2 * CFG.Irated * Math.SQRT2);
+[1.3, 0.8, 0.3, -0.8].forEach((f) => { const v = Math.round(f * nsr / 10) * 10, b = document.createElement("button");
+  b.textContent = (v > 0 ? "+" : "") + v + " rpm"; b.onclick = () => { $("W").value = v; apply(); }; $("quick").appendChild(b); });
+function setGains(g) { ["Kpw", "Kiw", "Kpi", "Kii"].forEach((k) => { $(k).value = +g[k].toPrecision(4); }); }
+setGains(ACEngine.imGains(P, 1500, 30, idr));
+const cfgNow = () => { const md = $("mode").value; return { mode: md === "foc" ? "foc" : "vf", slipComp: md === "vfs", Ts: 1e-4, h: 5e-5,
+  wRef: +$("W").value / RPM, TL: +$("TL").value, friction: $("fric").checked, ramp: +$("ramp").value, boost: +$("boost").value,
+  idRated: idr, Ilim: +$("Ilim").value, Kpw: +$("Kpw").value, Kiw: +$("Kiw").value, Kpi: +$("Kpi").value, Kii: +$("Kii").value,
+  ff: $("ff").checked, aw: $("aw").checked, fieldWeak: $("fwk").checked }; };
+const drv = new ACEngine.IMDrive(P, cfgNow());
+function apply() {
+  const c = cfgNow(); drv.set(c);
+  document.querySelectorAll(".foc").forEach((e) => e.classList.toggle("hide", c.mode !== "foc"));
+  document.querySelectorAll(".vf").forEach((e) => e.classList.toggle("hide", c.mode === "foc"));
+  $("lW").textContent = (+$("W").value).toFixed(0) + " rpm"; $("lT").textContent = c.TL.toFixed(1) + " N·m"; $("lI").textContent = c.Ilim.toFixed(0) + " A";
+  $("gnote").textContent = `정격 자속 전류 id* = ${idr.toFixed(2)} A. 미끄럼 주파수 ωsl = iq*/(τr·id*), τr = Lr/Rr. 전류 PI: Kp = ωci·σLs, Ki = ωci·(Rs + Rr·(Lm/Lr)²).`;
+}
+document.querySelectorAll("input,select").forEach((el) => el.addEventListener("input", apply));
+$("rec").onclick = () => { setGains(ACEngine.imGains(P, +$("wci").value, +$("wcs").value, idr)); apply(); };
+let paused = false;
+$("pause").onclick = () => { paused = !paused; $("pause").textContent = paused ? "▶ 계속" : "⏸ 일시정지"; };
+$("restart").onclick = () => { drv.reset(); [sW, sI, sF, sT].forEach((s) => s.clear()); nextSample = 0; };
+const sW = new RTCharts.Strip($("cW"), [{ name: "지령 n*", color: "#e9c46a", width: 3 }, { name: "실제 n", color: "#264653" }], { title: "속도 [rpm]", minSpan: 50 });
+const sI = new RTCharts.Strip($("cI"), [{ name: "iq* (토크분)", color: "#e9c46a", width: 3 }, { name: "iq", color: "#e76f51" }, { name: "id (자속분)", color: "#7c3aed" },
+  { name: "A상 ia", color: "#9aa0a6", width: 1 }], { title: "전류 [A] (dq: 회전자 자속 기준)", minSpan: 2 });
+const sF = new RTCharts.Strip($("cF"), [{ name: "인가 주파수 f", color: "#1d3557" }, { name: "회전자 전기 주파수 (P/2)·n/60", color: "#2a9d8f", dash: true }], { title: "주파수 [Hz] (차이 = 슬립 주파수)", minSpan: 1 });
+const sT = new RTCharts.Strip($("cT"), [{ name: "Te", color: "#2a9d8f" }, { name: "TL", color: "#6c757d", dash: true }], { title: "토크 [N·m]", minSpan: 2 });
+apply();
+let last = performance.now(), nextSample = 0;
+function frame(now) {
+  const dtWall = Math.min((now - last) / 1000, 0.05); last = now;
+  const win = +$("win").value;
+  if (!paused) {
+    const dtSim = dtWall * +$("spd").value, n = Math.max(1, Math.round(dtSim / 1e-3));
+    for (let k = 0; k < n; k++) {
+      drv.advance(dtSim / n);
+      if (drv.t >= nextSample) { const o = drv.out();
+        sW.push(o.t, [o.wRef * RPM, o.w * RPM]); sI.push(o.t, [o.iqRef, o.iqc, o.idc, o.ia]);
+        sF.push(o.t, [o.fout, pp * o.w / (2 * Math.PI)]); sT.push(o.t, [o.Te, o.TL]); nextSample = o.t + win / 600; }
+    }
+  }
+  const o = drv.out(); [sW, sI, sF, sT].forEach((s) => s.draw(o.t, win));
+  $("ro").innerHTML = `<span>시각 <b>${o.t.toFixed(3)} s</b></span><span>n* <b>${(o.wRef * RPM).toFixed(0)}</b></span><span>n <b>${(o.w * RPM).toFixed(1)} rpm</b></span>` +
+    `<span>f <b>${o.fout.toFixed(2)} Hz</b></span><span>|v| <b>${o.Vmag.toFixed(0)} V</b></span><span>Te <b>${o.Te.toFixed(1)} N·m</b></span><span>Is <b>${o.Is.toFixed(1)} A</b></span>`;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script></body></html>

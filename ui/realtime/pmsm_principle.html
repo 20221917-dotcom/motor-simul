@@ -1,0 +1,80 @@
+<!doctype html><html><head><meta charset="utf-8"><style>/*CSS*/
+.wrap { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr); gap: 12px; }
+@media (max-width: 800px) { .wrap { grid-template-columns: 1fr; } }
+#mot { height: 440px; } .s { height: 140px; }
+</style></head><body>
+<div class="bar">
+  <div class="ctl"><label>속도 지령 n* <b id="lW"></b></label><input id="W" type="range"></div>
+  <div class="ctl"><label>부하 토크 TL <b id="lT"></b></label><input id="TL" type="range"></div>
+  <div class="ctl" style="max-width:190px"><label>전류 지령 방식</label><select id="mode">
+    <option value="id0">id = 0 (수동 id 조정)</option><option value="mtpa" selected>MTPA (최대 토크/전류)</option><option value="fw">MTPA + 약계자</option></select></div>
+  <div class="ctl"><label>수동 id* (id = 0 방식에서) <b id="lD"></b></label><input id="ID" type="range" value="0"></div>
+  <div class="ctl" style="max-width:130px"><label>재생 속도</label><select id="spd">
+    <option value="0.002">1/500 배</option><option value="0.005" selected>1/200 배</option><option value="0.01">1/100 배</option><option value="0.05">1/20 배</option><option value="0.2">1/5 배</option></select></div>
+  <div class="ctl" style="max-width:120px"><label>그래프 폭</label><select id="win">
+    <option value="0.02">20 ms</option><option value="0.1" selected>0.1 s</option><option value="0.5">0.5 s</option><option value="2">2 s</option></select></div>
+  <button id="pause">⏸ 일시정지</button><button id="restart" class="primary">⟲ 정지 상태에서 다시 기동</button>
+</div>
+<div class="readout" id="ro"></div>
+<div class="wrap">
+  <div><canvas id="mot"></canvas><div class="note">2극 등가 그림 (전기각). 실선 d축 = 자석 N 방향, 점선 q축 = d축 + 90°.
+    보라: 고정자 전류 벡터, 빨강: id 성분, 초록: iq 성분. 토크 = (3/2)(P/2)[λf·iq + (Ld − Lq)·id·iq].</div></div>
+  <div><canvas class="s" id="cI"></canvas><canvas class="s" id="cD"></canvas><canvas class="s" id="cW"></canvas><canvas class="s" id="cT"></canvas></div>
+</div>
+<script>/*AC*/</script><script>/*ACDRAW*/</script><script>/*CHARTS*/</script>
+<script>
+const CFG = /*CONFIG*/;
+const $ = (id) => document.getElementById(id), RPM = 60 / (2 * Math.PI), P = CFG.p, pp = Math.round(P.poles / 2);
+const g = ACEngine.pmsmGains(P, 2000, 100);
+const nmax = Math.round(2.5 * CFG.nBase / 100) * 100;
+$("W").min = -nmax; $("W").max = nmax; $("W").step = 10; $("W").value = Math.round(0.6 * CFG.nBase / 10) * 10;
+const tlMax = +(1.1 * CFG.Tmax).toPrecision(2); $("TL").min = 0; $("TL").max = tlMax; $("TL").step = tlMax / 100; $("TL").value = Math.min(CFG.TL, tlMax);
+$("ID").min = -CFG.Imax; $("ID").max = 0; $("ID").step = 0.1;
+const cfgNow = () => Object.assign({ mode: $("mode").value, Ts: 1e-4, h: 2e-5, wRef: +$("W").value / RPM, TL: +$("TL").value, friction: true,
+  Imax: CFG.Imax, aw: true, ff: true, Kfw: 200, idManual: +$("ID").value }, g);
+const drv = new ACEngine.PMSMDrive(P, cfgNow());
+function apply() { const c = cfgNow(); drv.set(c);
+  $("lW").textContent = `${(+$("W").value).toFixed(0)} rpm`; $("lT").textContent = c.TL.toPrecision(3) + " N·m"; $("lD").textContent = c.idManual.toFixed(1) + " A";
+  $("ID").disabled = c.mode !== "id0"; }
+document.querySelectorAll("input,select").forEach((el) => el.addEventListener("input", apply)); apply();
+let paused = false;
+$("pause").onclick = () => { paused = !paused; $("pause").textContent = paused ? "▶ 계속" : "⏸ 일시정지"; };
+$("restart").onclick = () => { drv.reset(); [sI, sD, sW, sT].forEach((s) => s.clear()); nextSample = 0; };
+const sI = new RTCharts.Strip($("cI"), ["a", "b", "c"].map((n, k) => ({ name: "i" + n, color: ACDraw.PCOL[k] })), { title: "상전류 [A] (정현파)", minSpan: 2 });
+const sD = new RTCharts.Strip($("cD"), [{ name: "id", color: "#d62828" }, { name: "iq", color: "#2a9d3a" }], { title: "dq 전류 [A] (회전자 기준 → 직류처럼 보임)", minSpan: 2 });
+const sW = new RTCharts.Strip($("cW"), [{ name: "지령", color: "#e9c46a", width: 3 }, { name: "속도", color: "#264653" }], { title: "속도 [rpm]", minSpan: 50 });
+const sT = new RTCharts.Strip($("cT"), [{ name: "Te", color: "#2a9d8f" }, { name: "TL", color: "#6c757d", dash: true }], { title: "토크 [N·m]", minSpan: 0.5 });
+function draw(o) {
+  const [ctx, W, H] = RTCharts.setupCanvas($("mot")); ctx.clearRect(0, 0, W, H);
+  const m = ACDraw.M(W, H, 2.1), Iref = CFG.Imax;
+  ACDraw.stator(ctx, m, [o.ia, o.ib, o.ic], Iref);
+  ACDraw.magnet(ctx, m, o.the); ACDraw.axes(ctx, m, o.the);
+  const sc = 1.0 / Iref, ang = Math.atan2(o.isb, o.isa), mag = Math.hypot(o.isa, o.isb);
+  if (mag > 1e-3) {
+    ACDraw.vec(ctx, m, o.the, Math.abs(o.id) * sc, "#d62828", 3); if (o.id < 0) ACDraw.vec(ctx, m, o.the + Math.PI, Math.abs(o.id) * sc, "#d62828", 3);
+    ACDraw.vec(ctx, m, o.the + Math.sign(o.iq || 1) * Math.PI / 2, Math.abs(o.iq) * sc, "#2a9d3a", 3);
+    ACDraw.vec(ctx, m, ang, mag * sc, "#7c3aed", 5);
+  }
+  const beta = ((ang - o.the) * 180 / Math.PI % 360 + 540) % 360 - 180;
+  ACDraw.txt(ctx, `전류 벡터 각 (d축 기준) ${beta.toFixed(0)}°  ·  id = 0 이면 90°, MTPA·약계자는 90° 보다 큼`, 6, 12, { align: "left", color: "#555" });
+}
+let last = performance.now(), nextSample = 0;
+function frame(now) {
+  const dtWall = Math.min((now - last) / 1000, 0.05); last = now;
+  const win = +$("win").value;
+  if (!paused) {
+    const dtSim = dtWall * +$("spd").value, n = Math.max(1, Math.round(dtSim / 1e-4));
+    for (let k = 0; k < n; k++) {
+      drv.advance(dtSim / n);
+      if (drv.t >= nextSample) { const o = drv.out();
+        sI.push(o.t, [o.ia, o.ib, o.ic]); sD.push(o.t, [o.id, o.iq]); sW.push(o.t, [o.wRef * RPM, o.w * RPM]); sT.push(o.t, [o.Te, o.TL]); nextSample = o.t + win / 600; }
+    }
+  }
+  const o = drv.out(); draw(o); [sI, sD, sW, sT].forEach((s) => s.draw(o.t, win));
+  $("ro").innerHTML = `<span>시각 <b>${(o.t * 1000).toFixed(1)} ms</b></span><span>속도 <b>${(o.w * RPM).toFixed(0)} rpm</b></span>` +
+    `<span>id <b>${o.id.toFixed(2)}</b> iq <b>${o.iq.toFixed(2)} A</b></span><span>Te <b>${o.Te.toFixed(2)} N·m</b></span>` +
+    `<span>|v| <b>${o.vmag.toFixed(0)}</b> / ${o.Vmax.toFixed(0)} V</span><span>전기 주파수 <b>${(Math.abs(o.w) * pp / (2 * Math.PI)).toFixed(0)} Hz</b></span>`;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script></body></html>
