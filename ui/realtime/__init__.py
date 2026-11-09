@@ -21,6 +21,7 @@ def _build(template, config):
     html = html.replace("/*CSS*/", _read("common.css"))
     html = html.replace("/*ENGINE*/", _read("engine.js"))
     html = html.replace("/*CHARTS*/", _read("charts.js"))
+    html = html.replace("/*STRUCTURE*/", _read("structure.js"))
     return html.replace("/*CONFIG*/", json.dumps(config))
 
 

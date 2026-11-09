@@ -1,40 +1,30 @@
-"""DC 전동기 학습용 시뮬레이터 — 실행: streamlit run app.py"""
+"""전동기 학습용 시뮬레이터 — 실행: streamlit run app.py
+
+왼쪽 사이드바는 메뉴(직류 전동기 / 교류 전동기 / 관련 개념)이고,
+각 페이지의 파라미터 설정은 메인 화면 위쪽에 있다.
+새 전동기 페이지를 추가할 때는 ui/pages/ 에 render 함수를 만들고 아래 목록에 넣으면 된다.
+"""
 import streamlit as st
 
-from motors import registry
-from ui.sidebar import render_sidebar
-from ui.tabs.dc import tab_principle, tab_steady, tab_dynamic, tab_control
+from ui.pages import ac, concepts, dc_sim
 
-st.set_page_config(page_title="DC 전동기 시뮬레이터", page_icon="⚙️", layout="wide")
+st.set_page_config(page_title="전동기 학습 시뮬레이터", page_icon="⚙️", layout="wide")
 
-st.title("⚙️ DC 전동기 학습용 시뮬레이터")
-
-models = registry.all_models("DC")
-names = [m.name for m in models]
-choice = st.segmented_control("전동기 종류", names, default=names[0], key="motor_choice")
-model_cls = models[names.index(choice or names[0])]
-st.caption("종류를 바꾸면 사이드바와 4개 탭이 모두 그 전동기 기준으로 바뀝니다. "
-           "공통 파라미터(V, Ra, J 등)는 종류를 바꿔도 유지됩니다.")
-
-params, errors = render_sidebar(model_cls)
-if errors:
-    st.error("사이드바 파라미터에 물리적으로 맞지 않는 값이 있습니다. 고친 뒤 다시 시도하세요.\n\n"
-             + "\n".join(f"- {e}" for e in errors))
-    st.stop()
-model = model_cls(params)
-
-tabs = st.tabs(["① 원리 이해", "② 정상상태 특성", "③ 동특성 (시간 응답)", "④ 제어"])
-with tabs[0]:
-    tab_principle.render(model, params)
-with tabs[1]:
-    tab_steady.render(model, params)
-with tabs[2]:
-    tab_dynamic.render(model, params)
-with tabs[3]:
-    tab_control.render(model, params)
-
-st.divider()
-st.caption("**모델 가정** · 선형 자기회로 (Kφ = Laf·If, Ms·Ia), 자기포화·전기자 반작용·철손·"
-           "브러시 전압강하 무시. 정류는 이상적이며 초퍼는 평균값 모델 (스위칭 리플 무시). "
-           "원리·정상상태·동특성 탭의 부하 토크는 회전 방향과 무관한 일정 토크입니다. "
-           "계산은 SI 단위, 속도는 rpm 으로 표시합니다.")
+pages = {
+    "직류 전동기": [
+        st.Page(dc_sim.render, title="DC 전동기 시뮬레이터", icon="⚙️", default=True),
+    ],
+    "교류 전동기 (준비 중)": [
+        st.Page(ac.induction, title="유도전동기", icon="🌀", url_path="induction"),
+        st.Page(ac.pmsm, title="PMSM (영구자석 동기)", icon="🧲", url_path="pmsm"),
+        st.Page(ac.bldc, title="BLDC", icon="⚡", url_path="bldc"),
+    ],
+    "관련 개념": [
+        st.Page(concepts.em_basics, title="전자기 기초 (힘·기전력)", icon="🧭", url_path="em-basics"),
+        st.Page(concepts.commutation, title="정류 원리", icon="🔁", url_path="commutation"),
+        st.Page(concepts.magnetic, title="자기회로와 Kφ", icon="🧲", url_path="magnetic"),
+        st.Page(concepts.control_basics, title="제어 기초 (PI·대역폭)", icon="🎛️", url_path="control-basics"),
+        st.Page(concepts.symbols, title="기호와 단위", icon="📘", url_path="symbols"),
+    ],
+}
+st.navigation(pages, position="sidebar", expanded=True).run()

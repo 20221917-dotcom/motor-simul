@@ -25,7 +25,7 @@ def _warnings(model, op, op_nl, params):
             msg += (f"\n\n**차동 복권의 전기적 불안정**: 속도가 오르면 직권 자속이 줄어드는 몫까지 "
                     f"더해져 전류가 오히려 늘어납니다. 대략 **Ms·ω < Ra + Rs** 여야 안정합니다. "
                     f"지금은 Ms·ω = {params['Ms'] * op.omega:.2f} Ω, Ra + Rs = {R:.2f} Ω 입니다. "
-                    f"사이드바에서 Ms 를 {0.8 * R / max(op.omega, 1):.4f} H 이하로 줄여 보세요.")
+                    f"위 파라미터 설정에서 Ms 를 {0.8 * R / max(op.omega, 1):.4f} H 이하로 줄여 보세요.")
         st.error(msg)
     if abs(op.ia) > 1.5 * I_r:
         st.error(f"⚠️ 전기자 전류 {op.ia:.1f} A 가 정격 {I_r:.0f} A 의 "
@@ -103,7 +103,7 @@ def _compare_section(model, params):
     """여러 여자 방식의 속도–토크 곡선을 겹쳐 그리고 운전점 비교표를 만든다."""
     st.markdown("#### 여자 방식 비교")
     st.caption("체크한 방식의 곡선을 한 그래프에 겹칩니다. 공통 파라미터(V, Ra, La, J, B, TL, "
-               "정격 전류)는 사이드바 값을 같이 쓰고, 계자 파라미터는 각 종류에서 입력해 둔 값"
+               "정격 전류)는 파라미터 설정 값을 같이 쓰고, 계자 파라미터는 각 종류에서 입력해 둔 값"
                "(없으면 기본값)을 씁니다.")
     me = label_of(model)
     cols = st.columns(len(VARIANTS))
@@ -166,7 +166,7 @@ def _compare_section(model, params):
     with st.expander("비교해서 볼 점"):
         st.markdown("""
 - **타여자·분권**: 거의 수평인 직선. 부하가 변해도 속도가 일정합니다 (속도 변동률 수 %).
-  사이드바 기본값처럼 Vf = V 이면 두 곡선이 **완전히 겹칩니다** (계자 전류가 같으므로).
+  기본값처럼 Vf = V 이면 두 곡선이 **완전히 겹칩니다** (계자 전류가 같으므로).
   차이는 전압을 바꿀 때 드러납니다 → 동특성 탭 '전압 제어'로 비교해 보세요.
 - **직권**: 쌍곡선. 저부하에서 속도가 급격히 오르고(폭주), 같은 전류에서 토크가 가장 큽니다
   (표의 **2×정격전류 토크** 열). → 견인·크레인용.
@@ -220,7 +220,7 @@ def _load_sweep(model, u, params):
 
 def render(model, params):
     u = model.default_inputs()
-    st.caption(f"사이드바의 V = {params['V']:.0f} V, TL = {params['TL']:.1f} N·m 기준 정상상태입니다.")
+    st.caption(f"파라미터 설정의 V = {params['V']:.0f} V, TL = {params['TL']:.1f} N·m 기준 정상상태입니다.")
     op = model.steady_state(u)
     op_nl = model.no_load(u)
     _warnings(model, op, op_nl, params)

@@ -1,6 +1,6 @@
 """여자 방식 비교용 도우미: 비교 대상 목록과 모델 생성."""
 from motors import registry
-from ui.sidebar import params_from_session
+from ui.params_panel import params_from_session
 
 # (화면 이름, 모델 키, 덮어쓸 파라미터)
 VARIANTS = [
@@ -20,7 +20,7 @@ def label_of(model):
 
 
 def build(label, current_model=None, current_params=None):
-    """비교 대상 모델. 현재 선택된 종류면 사이드바 값을 그대로 쓴다."""
+    """비교 대상 모델. 현재 선택된 종류면 파라미터 설정 값을 그대로 쓴다."""
     _, key, over = next(v for v in VARIANTS if v[0] == label)
     cls = registry.get(key)
     if current_model is not None and label_of(current_model) == label:

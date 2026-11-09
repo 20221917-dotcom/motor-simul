@@ -83,7 +83,7 @@ def _settings(model, params):
                          "Kφ 가 작아 큰 전류가 오래 흐릅니다.")
     with c[1]:
         st.number_input("부하 인가 시각 [s]", 0.0, 30.0, step=0.1, key="dy_tload")
-        st.caption(f"부하 크기는 사이드바 TL = {params['TL']:.1f} N·m")
+        st.caption(f"부하 크기는 파라미터 설정의 TL = {params['TL']:.1f} N·m")
     with c[2]:
         st.number_input("기동 저항 Rst [Ω]", 0.0, 100.0, step=0.5, key="dy_rst",
                         help="0 이면 직입 기동")

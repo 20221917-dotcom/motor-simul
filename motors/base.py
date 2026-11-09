@@ -23,7 +23,7 @@ class MotorModel(ABC):
     @classmethod
     @abstractmethod
     def param_specs(cls) -> list[ParamSpec]:
-        """사이드바에 표시할 파라미터 목록."""
+        """파라미터 설정 영역에 표시할 파라미터 목록."""
 
     @classmethod
     def default_params(cls) -> dict:
@@ -41,7 +41,7 @@ class MotorModel(ABC):
     # ---- 동특성 ----------------------------------------------------------
     @abstractmethod
     def default_inputs(self):
-        """사이드바 값으로 만든 입력 dataclass."""
+        """파라미터 설정 값으로 만든 입력 dataclass."""
 
     @abstractmethod
     def initial_state(self, u) -> np.ndarray:

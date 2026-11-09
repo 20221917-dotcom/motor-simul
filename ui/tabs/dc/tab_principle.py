@@ -23,7 +23,7 @@ def _animation(model, params):
     st.caption("계산이 브라우저에서 실시간으로 돌아갑니다. 슬라이더를 움직이면 **지금 상태에서 "
                "바로** 반응하고, 처음부터 보려면 **⟲ 정지 상태에서 다시 기동** 버튼을 누르세요. "
                "재생 속도로 슬로모션 정도를 바꿀 수 있습니다.")
-    realtime.render(realtime.principle_html(model, params), height=720)
+    realtime.render(realtime.principle_html(model, params), height=800)
     with st.expander("그림 읽는 법", expanded=False):
         st.markdown("""
 - **⊙ / ⊗** : 도체 전류가 지면에서 나오는 / 들어가는 방향. 테두리 색은 연결된 **정류자편** 색과 같습니다.
@@ -40,7 +40,7 @@ def _animation(model, params):
 """)
 
 
-def _torque_ripple():
+def torque_ripple_section():
     st.markdown("#### 정류자와 코일 수에 따른 토크 파형")
     n = st.slider("코일 수 N (π/N 간격 배치)", 2, 16, 4, key="pr_ncoil")
     th = np.linspace(0, 4 * np.pi, 1000)
@@ -73,13 +73,13 @@ def render(model, params):
         _equations()
     with left:
         st.info(f"선택한 전동기: **{getattr(model, 'variant', model.name)}** · "
-                "여기서 보는 모든 값은 사이드바 파라미터 기준입니다.")
+                "여기서 보는 모든 값은 위 파라미터 설정 기준입니다.")
         if model.excitation == "series":
             st.warning("직권 전동기는 부하 토크를 0 근처로 내리면 속도가 매우 높아집니다 "
                        "(무부하 폭주). 슬라이더로 직접 확인해 보세요.")
     _animation(model, params)
     st.divider()
-    _torque_ripple()
+    torque_ripple_section()
     st.divider()
     st.markdown(f"#### {model.name} 전동기 결선도와 특징")
     c1, c2 = st.columns([3, 2])

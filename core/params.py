@@ -1,4 +1,4 @@
-"""사이드바 입력 파라미터 정의.
+"""파라미터 설정 영역의 입력 정의.
 
 각 전동기 모델이 ParamSpec 목록을 선언하면 UI가 이를 읽어
 입력 위젯을 자동으로 만든다. 새 전동기를 추가할 때 UI 코드를 고칠 필요가 없다.
@@ -13,7 +13,7 @@ class ParamSpec:
     label: str          # 한국어 이름
     unit: str           # 화면 표시 단위
     default: float      # 화면 단위 기준 기본값
-    group: str          # 사이드바 그룹 이름
+    group: str          # 파라미터 그룹 이름
     scale: float = 1.0  # 화면값 × scale = SI 값 (예: mH → H 는 1e-3)
     positive: bool = True    # True: 0 이하면 오류
     allow_zero: bool = False  # positive=True 이면서 0은 허용 (예: B, Rfx)

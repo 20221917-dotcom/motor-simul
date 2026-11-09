@@ -1,7 +1,7 @@
 <!doctype html><html><head><meta charset="utf-8"><style>/*CSS*/
-.wrap { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.15fr); gap: 12px; }
+.wrap { display: grid; grid-template-columns: minmax(300px, 1.25fr) minmax(300px, 1fr); gap: 12px; }
 @media (max-width: 760px) { .wrap { grid-template-columns: 1fr; } }
-#sec { height: 400px; } #vbar { height: 92px; } #sSpd, #sIa { height: 150px; }
+#sec { height: 470px; } #vbar { height: 92px; } #sSpd, #sIa { height: 185px; }
 </style></head><body>
 <div class="bar">
   <div class="ctl"><label>전기자 전압 V <b id="lV"></b></label><input id="V" type="range"></div>
@@ -12,6 +12,13 @@
       <option value="0.1" selected>1/10 배</option><option value="0.25">1/4 배</option>
       <option value="0.5">1/2 배</option><option value="1">실시간 (1배)</option></select></div>
   <label class="chk"><input id="fric" type="checkbox">마찰형 부하</label>
+  <div class="ctl" style="max-width:190px"><label>보기</label>
+    <select id="view"><option value="simple">단순 모형 (코일 1개)</option>
+      <option value="real" selected>실제 구조 (단면)</option><option value="side">실제 구조 (측면)</option>
+      <option value="both">실제 구조 (단면 + 측면)</option></select></div>
+  <div class="ctl" style="max-width:100px"><label>극수</label>
+    <select id="poles"><option value="2" selected>2극</option><option value="4">4극</option></select></div>
+  <label class="chk"><input id="labels" type="checkbox" checked>부품 이름</label>
   <button id="pause">⏸ 일시정지</button>
   <button id="restart" class="primary">⟲ 정지 상태에서 다시 기동</button>
 </div>
@@ -22,6 +29,7 @@
 </div>
 <script>/*ENGINE*/</script>
 <script>/*CHARTS*/</script>
+<script>/*STRUCTURE*/</script>
 <script>
 const CFG = /*CONFIG*/;
 const $ = (id) => document.getElementById(id);
@@ -60,68 +68,20 @@ const sIa = new RTCharts.Strip($("sIa"), [{ name: "Ia", color: "#e76f51" }], { t
 sIa.hlines = [{ y: CFG.Irated, color: "#bbb" }];
 const RPM = 60 / (2 * Math.PI);
 
-// ---- 단면 그림 ----
-function drawSection(o) {
+// ---- 전동기 그림 ----
+function drawMotor(o) {
   const [ctx, W, H] = RTCharts.setupCanvas($("sec"));
   ctx.clearRect(0, 0, W, H);
-  const S = Math.min(W / 3.9, H / 3.1), cx = W / 2, cy = H / 2 + 8;
-  const P = (x, y) => [cx + x * S, cy - y * S];
-  const arc = (r, a0, a1) => { ctx.beginPath(); ctx.arc(cx, cy, r * S, -a0, -a1, true); };
-  // 자극
-  [[-1, "#d9534f", "N"], [1, "#3b7dd8", "S"]].forEach(([sd, col, txt]) => {
-    const half = 42 * Math.PI / 180, c = sd > 0 ? 0 : Math.PI;
-    ctx.beginPath(); ctx.arc(cx, cy, 1.05 * S, -(c - half), -(c + half), true);
-    const [xo] = P(sd * 1.8, 0);
-    const yTop = cy - 1.05 * S * Math.sin(half), yBot = cy + 1.05 * S * Math.sin(half);
-    if (sd > 0) { ctx.lineTo(xo, yTop); ctx.lineTo(xo, yBot); }
-    else { ctx.lineTo(xo, yBot); ctx.lineTo(xo, yTop); }
-    ctx.closePath(); ctx.fillStyle = col; ctx.fill();
-    ctx.fillStyle = "#fff"; ctx.font = "bold 22px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(txt, ...P(sd * 1.45, 0));
-  });
-  // 자속선 (계자 세기 → 진하기)
-  const fr = CFG.ifNom > 0 ? Math.abs(o.if) / CFG.ifNom : 1;
-  ctx.strokeStyle = `rgba(120,80,200,${Math.min(0.85, 0.12 + 0.55 * fr).toFixed(2)})`; ctx.lineWidth = 2;
-  [0.55, 0, -0.55].forEach((y) => { ctx.beginPath(); ctx.moveTo(...P(-1.0, y)); ctx.lineTo(...P(1.0, y)); ctx.stroke(); });
-  // 회전자
-  ctx.beginPath(); ctx.arc(cx, cy, 0.95 * S, 0, 2 * Math.PI); ctx.fillStyle = "rgba(160,160,160,0.22)"; ctx.fill();
-  ctx.strokeStyle = "#888"; ctx.lineWidth = 1.5; ctx.stroke();
-  // 브러시
-  [[1, "+"], [-1, "−"]].forEach(([sd, t]) => {
-    const [x0, y0] = P(sd > 0 ? 0.23 : -0.38, 0.06);
-    ctx.fillStyle = "#333"; ctx.fillRect(x0, y0, 0.15 * S, 0.12 * S);
-    ctx.font = "bold 16px system-ui"; ctx.fillText(t, ...P(sd * 0.5, 0));
-  });
-  // 정류자편 (A: 코일변 1, B: 코일변 2)
-  const gap = 8 * Math.PI / 180;
-  ctx.lineWidth = 9;
-  ctx.strokeStyle = "#f0a020"; arc(0.22, theta - Math.PI / 2 + gap, theta + Math.PI / 2 - gap); ctx.stroke();
-  ctx.strokeStyle = "#20a39e"; arc(0.22, theta + Math.PI / 2 + gap, theta + 1.5 * Math.PI - gap); ctx.stroke();
-  // 코일변, 전류 방향, 힘
-  const fRef = CFG.forceRef || 1, fLen = 0.55 * Math.min(Math.abs(o.k * o.ia) / fRef, 1.6);
-  [[theta, "#f0a020"], [theta + Math.PI, "#20a39e"]].forEach(([ph, col]) => {
-    const x = 0.78 * Math.cos(ph), y = 0.78 * Math.sin(ph);
-    const sgn = (Math.cos(ph) >= 0 ? 1 : -1) * (Math.abs(o.ia) > 1e-3 ? Math.sign(o.ia) : 0);
-    ctx.setLineDash([3, 3]); ctx.strokeStyle = "#777"; ctx.lineWidth = 1.2;
-    ctx.beginPath(); ctx.moveTo(...P(0.22 * Math.cos(ph), 0.22 * Math.sin(ph))); ctx.lineTo(...P(x, y)); ctx.stroke();
-    ctx.setLineDash([]);
-    const [px, py] = P(x, y), r = 12;
-    ctx.beginPath(); ctx.arc(px, py, r, 0, 2 * Math.PI); ctx.fillStyle = "#fff"; ctx.fill();
-    ctx.lineWidth = 3; ctx.strokeStyle = col; ctx.stroke();
-    ctx.lineWidth = 2; ctx.strokeStyle = "#333";
-    if (sgn > 0) { ctx.beginPath(); ctx.arc(px, py, 3, 0, 2 * Math.PI); ctx.fillStyle = "#333"; ctx.fill(); }
-    if (sgn < 0) { const d = 6; ctx.beginPath(); ctx.moveTo(px - d, py - d); ctx.lineTo(px + d, py + d); ctx.moveTo(px + d, py - d); ctx.lineTo(px - d, py + d); ctx.stroke(); }
-    // 힘: F = I·L × B, B = +x → ⊙ 이면 위쪽
-    if (sgn !== 0 && fLen > 0.02) {
-      const dir = sgn * Math.sign(o.k || 1);
-      const [ax, ay] = P(x, y + 0.1 * dir), [bx, by] = P(x, y + 0.1 * dir + dir * fLen);
-      ctx.strokeStyle = "#2a9d3a"; ctx.fillStyle = "#2a9d3a"; ctx.lineWidth = 4;
-      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by + dir * 8); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx - 7, by + dir * 12); ctx.lineTo(bx + 7, by + dir * 12); ctx.closePath(); ctx.fill();
-    }
-  });
-  ctx.fillStyle = "#333"; ctx.font = "13px system-ui"; ctx.textAlign = "center";
-  ctx.fillText(`ω = ${(o.w * RPM).toFixed(0)} rpm   Ia = ${o.ia.toFixed(1)} A   Kφ = ${o.k.toFixed(3)}`, W / 2, 12);
+  const opt = { labels: $("labels").checked, poles: +$("poles").value, slots: 24,
+                fieldRatio: CFG.ifNom > 0 ? Math.abs(o.if) / CFG.ifNom : 1, forceRef: CFG.forceRef };
+  const v = $("view").value;
+  if (v === "simple") MotorDraw.drawSimple(ctx, 0, 0, W, H, o, theta, opt);
+  else if (v === "real") MotorDraw.drawReal(ctx, 0, 0, W, H, o, theta, opt);
+  else if (v === "side") MotorDraw.drawSide(ctx, 0, 0, W, H, o, theta, opt);
+  else { MotorDraw.drawReal(ctx, 0, 0, W, H * 0.6, o, theta, opt); MotorDraw.drawSide(ctx, 0, H * 0.6, W, H * 0.4, o, theta, opt); }
+  ctx.fillStyle = "#333"; ctx.font = "13px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "top";
+  ctx.fillText(`ω = ${(o.w * RPM).toFixed(0)} rpm   Ia = ${o.ia.toFixed(1)} A   Kφ = ${o.k.toFixed(3)} V·s/rad`, W / 2, 0);
+  $("poles").disabled = v === "simple" || v === "side";
 }
 
 // ---- 전압 분배 막대 ----
@@ -176,13 +136,13 @@ function frame(now) {
   }
   const o = sim.out();
   if (nextSample > o.t + 1) nextSample = 0;
-  drawSection(o); drawVbar(o);
+  drawMotor(o); drawVbar(o);
   sSpd.draw(o.t, WIN()); sIa.draw(o.t, WIN());
   $("ro").innerHTML = `<span>시뮬레이션 시각 <b>${o.t.toFixed(3)} s</b></span><span>속도 <b>${(o.w * RPM).toFixed(1)} rpm</b></span>` +
     `<span>Ia <b>${o.ia.toFixed(2)} A</b></span><span>If <b>${o.if.toFixed(3)} A</b></span><span>E <b>${o.E.toFixed(1)} V</b></span>` +
     `<span>Te <b>${o.Te.toFixed(2)} N·m</b></span><span>TL <b>${o.TL.toFixed(2)} N·m</b></span>`;
   requestAnimationFrame(frame);
 }
-$("secnote").textContent = "회전 표시는 눈에 보이도록 줄인 속도입니다 (실제 값은 위 숫자). 단면은 코일 1개로 단순화.";
+$("secnote").textContent = "회전 표시는 눈에 보이도록 줄인 속도입니다 (실제 값은 위 숫자). 실제 구조 그림은 개념도이며, 계산 모델은 극수·슬롯 수와 무관한 등가 모델입니다.";
 requestAnimationFrame(frame);
 </script></body></html>
