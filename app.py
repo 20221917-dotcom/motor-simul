@@ -55,7 +55,7 @@ pages = {
         st.Page(dc_blocks.render, title="제어 블록 편집기 (DC·BLDC·교류)", icon="🧩", url_path="blocks"),
     ],
     "회로 실습": [
-        st.Page(circuit.render, title="회로 시뮬레이터 (전류 흐름)", icon="🔌", url_path="circuit"),
+        st.Page(circuit.render, title="회로 시뮬레이터", icon="🔌", url_path="circuit"),
     ],
 }
 st.navigation(pages, position="sidebar", expanded=True).run()

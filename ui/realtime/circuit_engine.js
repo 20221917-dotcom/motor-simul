@@ -46,14 +46,34 @@
                B: { label: "점성 마찰 B", v: MOTOR_DEF.B, unit: "N·m·s", min: 0 }, TL: { label: "부하 토크 TL", v: MOTOR_DEF.TL, unit: "N·m", min: 0 } },
              desc: "타여자(자속 일정) DC 전동기의 전기자 회로: v = Ra·i + La·di/dt + Kφ·ω,  J·dω/dt = Kφ·i − Bω − TL. " +
                    "부하 토크는 회전을 막는 방향으로 걸립니다." },
+    vac3: { name: "3상 교류 전원", src3: true,
+            pins: [[0, 0], [4, -2], [4, 0], [4, 2]], pinNames: ["N", "a", "b", "c"], box: [0.7, -2.7, 3.3, 2.7],
+            params: { VLL: { label: "선간 전압 (실효값)", v: 220, unit: "V", min: 0 }, f: { label: "주파수 f", v: 60, unit: "Hz", min: 0 },
+                      seq: { label: "상회전", type: "select", v: "a-b-c (정상)", options: ["a-b-c (정상)", "a-c-b (역상)"] } },
+            desc: "Y 결선 3상 전원입니다. 중성점 N 과 a·b·c 상 단자가 있고, 상전압은 서로 120° 씩 늦습니다. " +
+                  "상전압 최댓값 = 선간 전압 × √2/√3. 그래프의 전압은 선간 전압 Vab·Vbc·Vca 입니다." },
+    inv3: { name: "3상 인버터",
+            pins: [[0, -2], [0, 2], [6, -2], [6, 0], [6, 2]], pinNames: ["P (+)", "N (−)", "a", "b", "c"], box: [0.8, -3, 5.2, 3],
+            params: { mode: { label: "스위칭 방식", type: "select", v: "사인파 PWM", options: ["사인파 PWM", "6스텝 (180° 통전)", "정지 (모든 스위치 꺼짐)"] },
+                      f: { label: "출력 주파수 f", v: 60, unit: "Hz", min: 0 },
+                      m: { label: "변조 지수 m (사인파 PWM)", v: 0.8, unit: "", min: 0, max: 1.15 },
+                      fc: { label: "반송파 주파수 (사인파 PWM)", v: 2000, unit: "Hz", min: 1 },
+                      Ron: { label: "스위치 도통 저항", v: 0.01, unit: "Ω", min: 1e-6 } },
+            desc: "직류(P·N)를 3상 교류(a·b·c)로 바꾸는 인버터입니다. 상마다 위·아래 스위치 한 쌍이 번갈아 켜져 " +
+                  "출력 단자를 P 또는 N 에 잇습니다 (스위치는 역병렬 다이오드를 포함해 양방향으로 흐른다고 봄). " +
+                  "사인파 PWM 은 사인 지령과 삼각파를 비교하고, 6스텝은 반 주기씩 켭니다. 그림의 초록 칸이 켜진 스위치입니다." },
     ammeter: { name: "전류계", params: {}, desc: "내부 저항 0. 화살표(a → b) 방향 전류를 재고, 순시값과 실효값을 보여 줍니다." },
     voltmeter: { name: "전압계", params: {}, desc: "내부 저항 무한대. + 단자와 − 단자 사이 전압을 재고, 순시값과 실효값을 보여 줍니다." },
     ground: { name: "접지", params: {}, one: true, desc: "전압 0 V 기준점입니다. 회로마다 하나씩 두면 전압 색이 알기 쉬워집니다." },
   };
-  const BRANCH = new Set(["inductor", "vdc", "vac", "motor", "ammeter"]);   // 전류를 미지수로 두는 부품
+  const BRANCH = new Set(["inductor", "vdc", "vac", "motor", "ammeter", "vac3"]);   // 전류를 미지수로 두는 부품
+  const NBR = (type) => (type === "vac3" ? 3 : 1);                                      // 부품당 가지 전류 개수
 
+  const rotPt = (q, rot) => { let [x, y] = q; for (let k = 0; k < rot; k++) [x, y] = [-y, x]; return [x, y]; };
   function terminals(e) {
     if (DEF[e.type].one) return [[e.x, e.y]];
+    const rot = ((e.rot || 0) % 4 + 4) % 4;
+    if (DEF[e.type].pins) return DEF[e.type].pins.map((q) => { const r = rotPt(q, rot); return [e.x + r[0], e.y + r[1]]; });
     const d = DIR[((e.rot || 0) % 4 + 4) % 4];
     return [[e.x, e.y], [e.x + SPAN * d[0], e.y + SPAN * d[1]]];
   }
@@ -127,7 +147,7 @@
     const node = P.map((_, i) => nodeOf.get(find(i)));
     const elems = sc.elems.filter((e) => e.type !== "ground").map((e) => {
       const t = terminals(e).map(pid);
-      return { e, pa: t[0], pb: t[1], a: node[t[0]], b: node[t[1]] };
+      return { e, pts: t, nodes: t.map((i) => node[i]), pa: t[0], pb: t[1], a: node[t[0]], b: node[t[1]] };
     });
     return { P, segs, node, nNodes: nn, elems, pid };
   }
@@ -167,9 +187,11 @@
     compile() {
       this.net = netlist(this.sc); this.compiled = this.sc.version;
       const nb = this.net.elems.filter((x) => BRANCH.has(x.e.type));
-      this.bIdx = new Map(nb.map((x, k) => [x.e.id, k]));
-      this.N = this.net.nNodes - 1 + nb.length;
-      for (const x of this.net.elems) if (!this.st[x.e.id]) this.st[x.e.id] = { vc: 0, il: 0, w: 0, th: 0, on: false, ms: 0, ms2: 0 };
+      this.bIdx = new Map(); let nbr = 0;
+      for (const x of nb) { this.bIdx.set(x.e.id, nbr); nbr += NBR(x.e.type); }
+      this.N = this.net.nNodes - 1 + nbr;
+      this.It = {};
+      for (const x of this.net.elems) if (!this.st[x.e.id]) this.st[x.e.id] = { vc: 0, il: 0, w: 0, th: 0, on: false, ms: 0, ms2: 0, g: [0, 0, 0] };
       this.V = new Array(this.net.nNodes).fill(0);
     }
     switchOn(x, t) {
@@ -177,6 +199,19 @@
       if (e.type === "switch") return !!e.p.on;
       if (e.type === "pwm") { const ph = (t * e.p.f) % 1; return ph < e.p.D; }
       return false;
+    }
+    // 3상 전원 상전압 (k = 0, 1, 2 → a, b, c)
+    phaseV(e, t, k) {
+      const Vm = e.p.VLL * Math.SQRT2 / Math.sqrt(3), sh = String(e.p.seq).startsWith("a-c") ? -1 : 1;
+      return Vm * Math.sin(2 * Math.PI * e.p.f * t - sh * k * 2 * Math.PI / 3);
+    }
+    // 인버터 상 k 의 위 스위치가 켜졌는지 (1 = 위 켜짐, 0 = 아래 켜짐, −1 = 둘 다 꺼짐)
+    gate(e, t, k) {
+      const p = e.p, th = 2 * Math.PI * p.f * t - k * 2 * Math.PI / 3;
+      if (String(p.mode).startsWith("정지")) return -1;
+      if (String(p.mode).startsWith("6스텝")) return Math.sin(th) >= 0 ? 1 : 0;
+      const ph = (t * p.fc) % 1, tri = ph < 0.5 ? 4 * ph - 1 : 3 - 4 * ph;   // 삼각파 −1 … 1
+      return p.m * Math.sin(th) > tri ? 1 : 0;
     }
     srcV(e, t) {
       if (e.type === "vdc") return +e.p.V;
@@ -209,6 +244,24 @@
             case "switch": case "pwm": G(a, b, this.switchOn(x, t) ? 1 / p.Ron : GOFF); break;
             case "diode": if (s.on) { G(a, b, 1 / p.Ron); Iin(a, b, -p.Vf / p.Ron); } else G(a, b, GOFF); break;
             case "voltmeter": break;
+            case "vac3": {      // 상마다 N → 상 단자 전압원 (가지 전류 = 그 상으로 내보내는 전류)
+              const iN = ix(x.nodes[0]);
+              for (let q = 0; q < 3; q++) {
+                const k = n1 + this.bIdx.get(e.id) + q, j = ix(x.nodes[q + 1]);
+                if (iN >= 0) { A[iN * N + k] += 1; A[k * N + iN] += 1; }
+                if (j >= 0) { A[j * N + k] -= 1; A[k * N + j] -= 1; }
+                z[k] = -this.phaseV(e, t, q);
+              }
+              break;
+            }
+            case "inv3": {
+              const P = x.nodes[0], Nn = x.nodes[1], gon = 1 / p.Ron;
+              for (let q = 0; q < 3; q++) {
+                const gt = this.gate(e, t, q), X = x.nodes[q + 2];
+                G(P, X, gt === 1 ? gon : GOFF); G(X, Nn, gt === 0 ? gon : GOFF);
+              }
+              break;
+            }
             default: {   // 가지 전류 미지수: Va − Vb − Z·i = r
               const k = n1 + this.bIdx.get(e.id), i = ix(a), j = ix(b);
               if (i >= 0) { A[i * N + k] += 1; A[k * N + i] += 1; }
@@ -251,6 +304,20 @@
           case "switch": case "pwm": s.on = this.switchOn(x, t); i = v * (s.on ? 1 / p.Ron : GOFF); break;
           case "diode": i = s.on ? (v - p.Vf) / p.Ron : v * GOFF; break;
           case "voltmeter": i = 0; break;
+          case "vac3": {
+            const b0 = n1 + this.bIdx.get(e.id), ip = [z[b0], z[b0 + 1], z[b0 + 2]];
+            this.It[e.id] = [ip[0] + ip[1] + ip[2], -ip[0], -ip[1], -ip[2]];        // 단자로 들어가는 전류
+            i = Math.max(...ip.map(Math.abs)); break;
+          }
+          case "inv3": {
+            const P = x.nodes[0], Nn = x.nodes[1], gon = 1 / p.Ron, It = [0, 0, 0, 0, 0];
+            for (let q = 0; q < 3; q++) {
+              const gt = this.gate(e, t, q), X = x.nodes[q + 2];
+              const iu = (gt === 1 ? gon : GOFF) * (V[P] - V[X]), il = (gt === 0 ? gon : GOFF) * (V[X] - V[Nn]);
+              It[0] += iu; It[1] -= il; It[q + 2] = il - iu; s.g[q] = gt;
+            }
+            this.It[e.id] = It; i = It[0]; break;
+          }
           default: i = z[n1 + this.bIdx.get(e.id)];
         }
         if (e.type === "inductor") s.il = i;
@@ -271,9 +338,16 @@
     // 화면용: 부품의 전압 (전원은 + 단자 기준)
     volt(id) {
       const x = this.net && this.net.elems.find((q) => q.e.id === id);
-      if (!x) return 0;
+      if (!x || DEF[x.e.type].pins) return 0;
       const v = this.V[x.a] - this.V[x.b];
       return DEF[x.e.type].src ? -v : v;
+    }
+    // 다단자 부품: a·b·c 단자에서 밖으로 나가는 상전류, 선간 전압 [Vab, Vbc, Vca]
+    phaseI(id) { const It = (this.It || {})[id]; if (!It) return [0, 0, 0]; const o = It.length - 3; return [-It[o], -It[o + 1], -It[o + 2]]; }
+    lineV(id) {
+      const x = this.net && this.net.elems.find((q) => q.e.id === id); if (!x) return [0, 0, 0];
+      const o = x.nodes.length - 3, v = [0, 1, 2].map((k) => this.V[x.nodes[o + k]] || 0);
+      return [v[0] - v[1], v[1] - v[2], v[2] - v[0]];
     }
     nodeV(pointIdx) { return this.net ? this.V[this.net.node[pointIdx]] || 0 : 0; }
     // 전선 토막마다 흐르는 전류 (a → b 방향 +). 절점 안의 전선 그래프를 단위 저항망으로 보고 KCL 로 품.
@@ -281,6 +355,7 @@
       const net = this.net; if (!net) return [];
       const inj = new Float64Array(net.P.length);       // 점으로 들어오는 전류
       for (const x of net.elems) {
+        if (DEF[x.e.type].pins) { const It = this.It[x.e.id] || []; x.pts.forEach((pt, k) => (inj[pt] -= It[k] || 0)); continue; }
         const i = this.I[x.e.id] || 0;
         inj[x.pa] -= i; if (x.pb !== undefined) inj[x.pb] += i;
       }
@@ -419,10 +494,30 @@
       sc.wire(16, 12, 4, 12);
       sc.add("ground", 12, 12);
     },
+    "3상 교류 전원 + Y 결선 RL 부하 (중성선 스위치)": (sc) => {
+      sc.add("vac3", 2, 10, 0, { VLL: 220, f: 60 });
+      sc.wire(6, 8, 8, 8); sc.wire(8, 8, 8, 4); sc.wire(6, 10, 8, 10); sc.wire(6, 12, 8, 12); sc.wire(8, 12, 8, 16);
+      for (const y of [4, 10, 16]) { sc.add("resistor", 8, y, 0, { R: 10 }); sc.add("inductor", 12, y, 0, { L: 0.02 }); sc.wire(16, y, 20, y); }
+      sc.wire(20, 4, 20, 16); sc.wire(20, 16, 20, 20);
+      sc.add("switch", 20, 20, 2, { on: false });
+      sc.add("ammeter", 16, 20, 2);
+      sc.wire(12, 20, 2, 20); sc.wire(2, 20, 2, 10);
+      sc.add("ground", 2, 20);
+    },
+    "3상 인버터: 직류 → 3상 교류 (RL 부하)": (sc) => {
+      sc.add("vdc", 1, 12, 3, { V: 300 });
+      sc.add("capacitor", 5, 12, 3, { C: 1e-3 });
+      sc.wire(1, 8, 9, 8); sc.wire(1, 12, 9, 12);
+      sc.add("inv3", 9, 10, 0);
+      sc.wire(15, 8, 17, 8); sc.wire(17, 8, 17, 4); sc.wire(15, 10, 17, 10); sc.wire(15, 12, 17, 12); sc.wire(17, 12, 17, 16);
+      for (const y of [4, 10, 16]) { sc.add("resistor", 17, y, 0, { R: 10 }); sc.add("inductor", 21, y, 0, { L: 0.02 }); sc.wire(25, y, 29, y); }
+      sc.wire(29, 4, 29, 16);
+      sc.add("ground", 3, 12);
+    },
     "빈 화면": () => {},
   };
 
-  const api = { SPAN, DEF, Schematic, Sim, netlist, terminals, defaults, TEMPLATES };
+  const api = { SPAN, DEF, Schematic, Sim, netlist, terminals, rotPt, defaults, TEMPLATES };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.Circuit = api;
 })(this);

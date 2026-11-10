@@ -117,3 +117,41 @@ def test_short_circuit_reports_error():
     r = js("""const sc = new C.Schematic(); sc.add("vdc", 0, 4, 3); sc.wire(0, 0, 0, 4);
 const s = new C.Sim(sc); s.step(1e-4); console.log(JSON.stringify({ err: s.err }));""")
     assert "단락" in r["err"]
+
+
+def _three_phase_peaks(name, h, T=0.2, t0=0.15):
+    return js(f"""const [sc, s] = tpl({json.dumps(name)}, (sc) => by(sc, "switch").forEach((e) => (e.p.on = true)));
+const src = sc.elems.find((e) => e.type === "vac3" || e.type === "inv3"); const mx = [0, 0, 0]; let vmx = 0, isum = 0, nsum = 0;
+for (let k = 0; k < Math.round({T} / {h}); k++) {{ s.step({h}); if (s.t > {t0}) {{
+  const I = s.phaseI(src.id); I.forEach((v, j) => (mx[j] = Math.max(mx[j], Math.abs(v)))); vmx = Math.max(vmx, Math.abs(s.lineV(src.id)[0]));
+  isum = Math.max(isum, Math.abs(I[0] + I[1] + I[2])); const am = by(sc, "ammeter")[0]; if (am) nsum = Math.max(nsum, Math.abs(s.I[am.id])); }} }}
+console.log(JSON.stringify({{ mx, vmx, isum, nsum, err: s.err }}));""")
+
+
+def test_three_phase_source_balanced_rl_load():
+    r = _three_phase_peaks("3상 교류 전원 + Y 결선 RL 부하 (중성선 스위치)", 1e-5)
+    Z = abs(complex(10, 2 * math.pi * 60 * 0.02))
+    Ip = 220 * math.sqrt(2) / math.sqrt(3) / Z
+    assert r["err"] == ""
+    assert r["mx"] == pytest.approx([Ip] * 3, rel=5e-3)
+    assert r["vmx"] == pytest.approx(220 * math.sqrt(2), rel=1e-3)            # 선간 전압 최댓값
+    assert r["isum"] < 1e-6 and r["nsum"] < 1e-3                               # 평형: 상전류 합 = 중성선 전류 = 0
+
+
+def test_three_phase_inverter_spwm_fundamental_current():
+    r = _three_phase_peaks("3상 인버터: 직류 → 3상 교류 (RL 부하)", 5e-6)
+    Z = abs(complex(10, 2 * math.pi * 60 * 0.02))
+    Ip = 0.8 * 300 / 2 / Z                                                     # 상전압 기본파 최댓값 = m·Vdc/2
+    assert r["err"] == ""
+    assert r["mx"] == pytest.approx([Ip] * 3, rel=0.06)                       # PWM 리플만큼 여유
+    assert r["vmx"] == pytest.approx(300, rel=1e-3)                            # 선간 전압은 ±Vdc 로 스위칭
+    assert r["isum"] < 1e-6
+
+
+def test_six_step_inverter_line_voltage_levels():
+    r = js("""const [sc, s] = tpl("3상 인버터: 직류 → 3상 교류 (RL 부하)"); const inv = by(sc, "inv3")[0]; inv.p.mode = "6스텝 (180° 통전)";
+const lv = new Set(); for (let k = 0; k < 20000; k++) { s.step(5e-6); lv.add(Math.round(s.lineV(inv.id)[0])); }
+inv.p.mode = "정지 (모든 스위치 꺼짐)"; for (let k = 0; k < 20000; k++) s.step(5e-6);
+console.log(JSON.stringify({ lv: [...lv].sort((a, b) => a - b), off: s.phaseI(inv.id) }));""")
+    assert set(r["lv"]) <= {-300, 0, 300} and {-300, 300} <= set(r["lv"])    # 6스텝 선간 전압: +Vdc, 0, −Vdc
+    assert all(abs(i) < 1e-3 for i in r["off"])                                # 정지하면 전류 0 (RL 부하 에너지 소멸 후)
