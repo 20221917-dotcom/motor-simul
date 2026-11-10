@@ -112,5 +112,41 @@
     }
   }
 
-  root.RTCharts = { Strip, setupCanvas };
+  /* '재생 속도' 목록(select#spd)을 퍼센트 슬라이더로 바꾼다 (로그 눈금, 오른쪽 끝 = 100 % 실제 속도).
+   * 목록의 가장 작은 값이 최솟값, 원래 선택값이 시작값이 된다. 다른 코드는 그대로 $("spd").value 를 읽는다. */
+  function upgradeSpeed() {
+    const sel = document.getElementById("spd");
+    if (!sel || sel.tagName !== "SELECT") return;
+    const vals = [...sel.options].map((o) => +o.value).filter((v) => v > 0);
+    const lo = Math.log10(Math.min(...vals, 1)), hi = 0, def = +sel.value || 1;
+    const toPos = (v) => Math.round((Math.log10(v) - lo) / (hi - lo) * 1000);
+    const toVal = (p) => (p >= 995 ? 1 : Math.pow(10, lo + (hi - lo) * p / 1000));
+    const fmt = (v) => {
+      const pct = v * 100, n = pct >= 10 ? pct.toFixed(0) : pct >= 1 ? pct.toFixed(1) : pct.toFixed(2);
+      return v >= 0.999 ? `${n} % (실제 속도)` : `${n} % (1/${(1 / v) >= 10 ? (1 / v).toFixed(0) : (1 / v).toFixed(1)} 배)`;
+    };
+    const wrap = document.createElement("span");
+    wrap.style.cssText = "display:flex; align-items:center; gap:6px; width:100%";
+    const range = document.createElement("input");
+    range.type = "range"; range.min = 0; range.max = 1000; range.step = 1; range.value = toPos(def);
+    range.style.cssText = "flex:1; min-width:90px"; range.title = "오른쪽 끝 = 실제 속도 100 %, 왼쪽으로 갈수록 느리게 (로그 눈금)";
+    const btn = document.createElement("button");
+    btn.type = "button"; btn.textContent = "100%"; btn.title = "실제 속도로"; btn.style.cssText = "padding:2px 6px; font-size:11px";
+    const hidden = document.createElement("input");
+    hidden.type = "hidden"; hidden.id = "spd"; hidden.value = def;
+    const lab = document.createElement("b"); lab.textContent = fmt(def); lab.style.whiteSpace = "nowrap";
+    const set = (v) => { hidden.value = v; lab.textContent = fmt(v); hidden.dispatchEvent(new Event("input", { bubbles: true })); };
+    range.addEventListener("input", (ev) => { ev.stopPropagation(); set(toVal(+range.value)); });
+    btn.addEventListener("click", () => { range.value = 1000; set(1); });
+    sel.replaceWith(wrap);
+    wrap.append(range, btn, hidden);
+    const ctl = wrap.closest(".ctl"), L = ctl && ctl.querySelector("label");
+    if (ctl) { ctl.style.maxWidth = "none"; ctl.style.minWidth = "220px"; }
+    if (L && L.contains(wrap)) { L.insertBefore(lab, wrap); L.style.display = "inline-flex"; L.style.gap = "6px"; L.style.alignItems = "center"; wrap.style.width = "200px"; }
+    else if (L) { L.style.display = "flex"; L.style.justifyContent = "space-between"; L.appendChild(lab); }
+    else wrap.prepend(lab);
+  }
+  upgradeSpeed();
+
+  root.RTCharts = { Strip, setupCanvas, upgradeSpeed };
 })(this);
