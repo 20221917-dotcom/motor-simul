@@ -1,7 +1,10 @@
 <!doctype html><html><head><meta charset="utf-8"><style>/*CSS*/
 .wrap { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr); gap: 12px; }
-@media (max-width: 820px) { .wrap { grid-template-columns: 1fr; } }
-#disk { height: 430px; } #tn { height: 230px; } .s { height: 140px; }
+.charts { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 8px; }
+@media (max-width: 820px) { .wrap, .charts { grid-template-columns: 1fr; } }
+#disk { height: 470px; } #zoom { height: 290px; } #side { height: 190px; } #tn, .s { height: 190px; }
+.layers { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; padding: 4px 2px 6px; align-items: center; }
+.layers b { color: #555; font-weight: 600; }
 </style></head><body>
 <div class="bar">
   <div class="ctl"><label>자석 회전 속도 <b id="lM"></b></label><input id="M" type="range" min="-3000" max="3000" step="10" value="60"></div>
@@ -14,13 +17,24 @@
   <button id="spin">🖐 원판 손으로 돌리기 (300 rpm)</button>
   <button id="pause">⏸ 일시정지</button><button id="restart" class="primary">⟲ 처음부터 (원판 정지)</button>
 </div>
+<div class="layers"><b>보기 단계:</b>
+  <label class="chk"><input id="Lb" type="checkbox" checked>① 자속 B</label>
+  <label class="chk"><input id="Ld" type="checkbox" checked>② 자속 변화</label>
+  <label class="chk"><input id="Le" type="checkbox" checked>③ 와전류</label>
+  <label class="chk"><input id="Li" type="checkbox">④ 와전류가 만든 자계</label>
+  <label class="chk"><input id="Lf" type="checkbox" checked>⑤ 힘 F = J × B</label>
+  <span style="margin-left:12px">확대 보기 자석: <select id="pole"><option>N</option><option>S</option></select></span>
+</div>
 <div class="readout" id="ro"></div>
 <div class="wrap">
   <div><canvas id="disk"></canvas>
-    <div class="note">위에서 본 그림. 원판 <b>아래</b>에서 자석(빨강 N, 파랑 S)이 돕니다. 회색 표시선은 원판에 붙어 함께 돕니다.
-      소용돌이 화살표는 자석 앞·뒤에 생기는 <b>와전류</b>, 초록 화살표는 원판이 받는 힘입니다.</div></div>
-  <div><canvas id="tn"></canvas><canvas class="s" id="cW"></canvas><canvas class="s" id="cT"></canvas></div>
+    <div class="note">전체 (위에서 본 그림). 원판 <b>아래</b>에서 자석(빨강 N, 파랑 S)이 돕니다. 검은·회색 선은 원판에 붙어 함께 돕니다.
+      ⊙ 위로 나오는 자속, ⊗ 아래로 들어가는 자속 · 주황 고리: 와전류 · 초록: 원판이 받는 힘.</div></div>
+  <div><canvas id="zoom"></canvas><canvas id="side"></canvas>
+    <div class="note">위: 자석 하나 주변을 확대해 원판 위에서 본 그림 (자석이 원판에 대해 움직이는 방향을 오른쪽으로 둠).
+      아래: 같은 곳을 옆에서 자른 단면.</div></div>
 </div>
+<div class="charts"><canvas id="tn"></canvas><canvas class="s" id="cW"></canvas><canvas class="s" id="cT"></canvas></div>
 <script>/*ARAGO*/</script><script>/*CHARTS*/</script>
 <script>
 const $ = (id) => document.getElementById(id), RPM = 60 / (2 * Math.PI), DEG = Math.PI / 180;
@@ -38,6 +52,7 @@ function apply() {
   $("lB").textContent = `${(sim.c.Tb * 1000).toFixed(1)} mN·m`;
 }
 ["M", "mat", "G", "TB", "on"].forEach((id) => $(id).addEventListener("input", apply)); apply();
+const L = () => ({ B: $("Lb").checked, dPhi: $("Ld").checked, eddy: $("Le").checked, ind: $("Li").checked, F: $("Lf").checked });
 let paused = false;
 $("pause").onclick = () => { paused = !paused; $("pause").textContent = paused ? "▶ 계속" : "⏸ 일시정지"; };
 $("restart").onclick = () => { sim.reset(); [sW, sT].forEach((s) => s.clear()); nextSample = 0; };
@@ -45,72 +60,186 @@ $("spin").onclick = () => { sim.wd = 300 / RPM; };
 const sW = new RTCharts.Strip($("cW"), [{ name: "자석", color: "#d62828", dash: true }, { name: "원판", color: "#264653" }], { title: "속도 [rpm]", minSpan: 20 });
 const sT = new RTCharts.Strip($("cT"), [{ name: "와전류 토크", color: "#2a9d8f" }, { name: "제동 토크", color: "#6c757d", dash: true }], { title: "토크 [mN·m]", minSpan: 1 });
 
-// ---- 원판 그림 ----
-function curl(ctx, x, y, r, ccw, alpha) {   // 소용돌이(와전류) 화살표
-  if (alpha < 0.05) return;
-  ctx.save(); ctx.strokeStyle = `rgba(234,88,12,${alpha})`; ctx.fillStyle = ctx.strokeStyle; ctx.lineWidth = 2.2;
-  const a0 = 0.3, a1 = 2 * Math.PI - 0.5;
-  ctx.beginPath(); ctx.arc(x, y, r, a0, a1, false); ctx.stroke();
-  // 화살촉 (그림 좌표: arc 는 시계 방향이 양수 → ccw 이면 반대로 그림)
-  const ae = ccw ? a0 : a1, dir = ccw ? -1 : 1;
-  const ex = x + r * Math.cos(ae), ey = y + r * Math.sin(ae);
-  const tx = -Math.sin(ae) * dir, ty = Math.cos(ae) * dir;
-  ctx.beginPath(); ctx.moveTo(ex + tx * 7, ey + ty * 7); ctx.lineTo(ex - ty * 5, ey + tx * 5); ctx.lineTo(ex + ty * 5, ey - tx * 5); ctx.closePath(); ctx.fill();
+// ---- 그림 도구 ----
+const COL = { eddy: "#ea580c", B: "#7c3aed", ind: "#0e7490", F: "#16a34a" };
+function sym(ctx, x, y, r, kind, color, lw) {   // kind: "dot" ⊙ (지면에서 나옴) / "cross" ⊗ (들어감)
+  ctx.save(); ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = lw || 1.6;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, 2 * Math.PI); ctx.stroke();
+  if (kind === "dot") { ctx.beginPath(); ctx.arc(x, y, r * 0.3, 0, 2 * Math.PI); ctx.fill(); }
+  else { const d = r * 0.62; ctx.beginPath(); ctx.moveTo(x - d, y - d); ctx.lineTo(x + d, y + d); ctx.moveTo(x + d, y - d); ctx.lineTo(x - d, y + d); ctx.stroke(); }
   ctx.restore();
 }
-function arrow(ctx, x1, y1, x2, y2, col, w) {
+function arrow(ctx, x1, y1, x2, y2, col, w, label) {
   const L = Math.hypot(x2 - x1, y2 - y1); if (L < 4) return;
-  const ux = (x2 - x1) / L, uy = (y2 - y1) / L, hd = Math.min(12, 4 + L * 0.3);
-  ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = w;
+  const ux = (x2 - x1) / L, uy = (y2 - y1) / L, hd = Math.min(13, 5 + L * 0.25);
+  ctx.save(); ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = w;
   ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2 - ux * hd, y2 - uy * hd); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(x2, y2); ctx.lineTo(x2 - ux * hd - uy * hd * 0.5, y2 - uy * hd + ux * hd * 0.5); ctx.lineTo(x2 - ux * hd + uy * hd * 0.5, y2 - uy * hd - ux * hd * 0.5); ctx.closePath(); ctx.fill();
+  if (label) { ctx.font = "bold 12px system-ui"; ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillText(label, x2 + 6, y2); }
+  ctx.restore();
 }
-function drawDisk(o) {
+/* 화면 좌표의 타원 고리 + 방향 화살촉 여러 개. cwScreen = 화면에서 시계 방향 */
+function loop(ctx, cx, cy, rx, ry, cwScreen, alpha, nHeads, lw) {
+  if (alpha < 0.04) return;
+  ctx.save(); ctx.strokeStyle = `rgba(234,88,12,${alpha})`; ctx.fillStyle = ctx.strokeStyle; ctx.lineWidth = lw || 2.4;
+  ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI); ctx.stroke();
+  for (let k = 0; k < nHeads; k++) {
+    const t = (k + 0.25) * 2 * Math.PI / nHeads, x = cx + rx * Math.cos(t), y = cy + ry * Math.sin(t);
+    // 화면 각 t 가 늘어나는 방향 = 화면에서 시계 방향
+    let tx = -rx * Math.sin(t), ty = ry * Math.cos(t); const n = Math.hypot(tx, ty); tx /= n; ty /= n;
+    if (!cwScreen) { tx = -tx; ty = -ty; }
+    const h = 7 + lw;
+    ctx.beginPath(); ctx.moveTo(x + tx * h, y + ty * h); ctx.lineTo(x - ty * h * 0.55, y + tx * h * 0.55); ctx.lineTo(x + ty * h * 0.55, y - tx * h * 0.55); ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+function eddyLevel(o) { return Math.min(1, Math.abs(o.dw * sim.c.rm) * sim.mat().sigma * o.B / 2e6); }
+
+// ---- 원판 전체 그림 ----
+function drawDisk(o, lay) {
   const [ctx, W, H] = RTCharts.setupCanvas($("disk")); ctx.clearRect(0, 0, W, H);
-  const S = Math.min(W, H) / 2.5, cx = W / 2, cy = H / 2;
-  const P = (r, a) => [cx + r * S * Math.cos(a), cy - r * S * Math.sin(a)];   // r: 원판 반지름 = 1
+  const S = Math.min(W, H) / 2.45, cx = W / 2, cy = H / 2 + 6;
+  const P = (r, a) => [cx + r * S * Math.cos(a), cy - r * S * Math.sin(a)];
   const mat = sim.mat();
-  // 원판
   ctx.beginPath(); ctx.arc(cx, cy, S, 0, 2 * Math.PI); ctx.fillStyle = mat.color; ctx.fill(); ctx.strokeStyle = "#555"; ctx.lineWidth = 2; ctx.stroke();
   if (mat.slotted) for (let k = 0; k < 16; k++) {
     const a = o.thd + k * 2 * Math.PI / 16; ctx.strokeStyle = "#fff"; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(...P(0.3, a)); ctx.lineTo(...P(0.97, a)); ctx.stroke();
   }
-  for (let k = 0; k < 8; k++) {   // 원판에 붙은 표시선
-    const a = o.thd + k * 2 * Math.PI / 8; ctx.strokeStyle = k === 0 ? "#111" : "rgba(60,60,60,0.45)"; ctx.lineWidth = k === 0 ? 3 : 1.5;
+  for (let k = 0; k < 8; k++) {
+    const a = o.thd + k * 2 * Math.PI / 8; ctx.strokeStyle = k === 0 ? "#111" : "rgba(60,60,60,0.4)"; ctx.lineWidth = k === 0 ? 3 : 1.5;
     ctx.beginPath(); ctx.moveTo(...P(0.12, a)); ctx.lineTo(...P(0.92, a)); ctx.stroke();
   }
   ctx.beginPath(); ctx.arc(cx, cy, 0.08 * S, 0, 2 * Math.PI); ctx.fillStyle = "#444"; ctx.fill();
-  // 자석 (원판 아래) — N, S
-  const rm = sim.c.rm / sim.c.R, half = (sim.c.a / sim.c.R) / 2;
-  const on = sim.c.magnetOn, dir = Math.sign(o.dw) || 0;
-  const Jmag = Math.min(1, Math.abs(o.dw * sim.c.rm) * sim.mat().sigma * o.B / 4e6);   // 와전류 세기 (표시용)
+  const rm = sim.c.rm / sim.c.R, half = (sim.c.a / sim.c.R) / 2, on = sim.c.magnetOn, dir = Math.sign(o.dw) || 0;
+  const lev = eddyLevel(o), Tmx = Math.max(Tmax0, 1e-9);
   [[0, "#d62828", "N"], [Math.PI, "#1d4ed8", "S"]].forEach(([off, col, lab]) => {
-    const a = o.thm + off, [mx, my] = P(rm, a);
-    if (on) {
-      ctx.save(); ctx.translate(mx, my); ctx.rotate(-a);
-      ctx.globalAlpha = 0.85; ctx.fillStyle = col; ctx.fillRect(-half * S * 1.3, -half * S * 1.3, 2.6 * half * S, 2.6 * half * S);
-      ctx.setLineDash([4, 3]); ctx.strokeStyle = "#111"; ctx.lineWidth = 1.5; ctx.strokeRect(-half * S * 1.3, -half * S * 1.3, 2.6 * half * S, 2.6 * half * S);
-      ctx.restore(); ctx.globalAlpha = 1;
-      ctx.fillStyle = "#fff"; ctx.font = "bold 15px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(lab, mx, my);
-    }
-    // 와전류 소용돌이: 자석이 원판에 대해 움직이는 방향(접선, dir) 의 앞과 뒤
-    if (on && dir !== 0 && sim.mat().sigma > 0) {
-      const da = 0.32 * dir;   // 자석 앞쪽 각도 오프셋
-      const sgnPole = lab === "N" ? 1 : -1;
-      // N 극 앞: 위로 향하는 자속이 늘어남 → 아래로 향하는 자계를 만들도록 (위에서 보면) 시계 방향 전류
-      const [fx, fy] = P(rm, a + da), [bx, by] = P(rm, a - da);
-      curl(ctx, fx, fy, 0.11 * S, sgnPole < 0, Jmag);
-      curl(ctx, bx, by, 0.11 * S, sgnPole > 0, Jmag);
-      // 원판이 받는 힘: 자석이 움직이는 방향으로 끌려감 (접선)
-      const fl = Math.min(1, Math.abs(o.T) / Math.max(Tmax0, 1e-9)) * 0.45 * S;
-      const tx = -Math.sin(a) * dir, ty = -Math.cos(a) * dir;
-      arrow(ctx, mx, my, mx + tx * fl, my + ty * fl, "#16a34a", 4);
-    }
+    if (!on) return;
+    const a = o.thm + off, [mx, my] = P(rm, a), hw = 1.3 * half * S;
+    ctx.save(); ctx.translate(mx, my); ctx.rotate(-a);
+    ctx.globalAlpha = 0.8; ctx.fillStyle = col; ctx.fillRect(-hw, -hw, 2 * hw, 2 * hw);
+    ctx.globalAlpha = 1; ctx.setLineDash([4, 3]); ctx.strokeStyle = "#111"; ctx.lineWidth = 1.5; ctx.strokeRect(-hw, -hw, 2 * hw, 2 * hw); ctx.restore();
+    if (lay.B) sym(ctx, mx, my, 9, lab === "N" ? "dot" : "cross", "#fff", 2);
+    else { ctx.fillStyle = "#fff"; ctx.font = "bold 15px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(lab, mx, my); }
+    if (dir === 0 || sim.mat().sigma === 0) return;
+    // 자석이 원판에 대해 움직이는 접선 방향 (화면 좌표): 수학 좌표 접선 (−sin a, cos a)·dir → 화면 (x, −y)
+    const tx = -Math.sin(a) * dir, ty = -Math.cos(a) * dir, d = 0.34 * S * 0.32;
+    const fx = mx + tx * d * 1.3, fy = my + ty * d * 1.3, bx = mx - tx * d * 1.3, by = my - ty * d * 1.3;
+    // N 극 앞: 위로 나오는 자속이 늘어남 → 위에서 보아 시계 방향 전류. 화면은 위에서 본 그림이므로 그대로 시계 방향.
+    const aheadCW = lab === "N";
+    if (lay.eddy) { loop(ctx, fx, fy, 0.1 * S, 0.1 * S, aheadCW, lev, 3, 2); loop(ctx, bx, by, 0.1 * S, 0.1 * S, !aheadCW, lev, 3, 2); }
+    if (lay.ind && lev > 0.04) { sym(ctx, fx, fy, 6, aheadCW ? "cross" : "dot", COL.ind); sym(ctx, bx, by, 6, aheadCW ? "dot" : "cross", COL.ind); }
+    if (lay.F) { const fl = Math.min(1, Math.abs(o.T) / Tmx) * 0.42 * S; arrow(ctx, mx, my, mx + tx * fl, my + ty * fl, COL.F, 4); }
   });
   ctx.fillStyle = "#333"; ctx.font = "13px system-ui"; ctx.textAlign = "left"; ctx.textBaseline = "top";
   ctx.fillText(`자석 ${(o.wm * RPM).toFixed(0)} rpm · 원판 ${(o.wd * RPM).toFixed(1)} rpm`, 6, 4);
 }
+
+// ---- 확대 보기: 자석 하나 주변을 원판 위에서 봄 (자석의 상대 이동 방향 = 화면 오른쪽) ----
+function drawZoom(o, lay) {
+  const [ctx, W, H] = RTCharts.setupCanvas($("zoom")); ctx.clearRect(0, 0, W, H);
+  const pole = $("pole").value, isN = pole === "N", on = sim.c.magnetOn;
+  const dir = Math.sign(o.dw), moving = on && dir !== 0 && sim.mat().sigma > 0 && Math.abs(o.dw) > 1e-3;
+  // 설명용 그림이라 약한 와전류도 잘 보이게 (진하기 0.55 ~ 1)
+  const lev = moving ? 0.55 + 0.45 * eddyLevel(o) : 0;
+  const cx = W / 2, cy = H / 2 + 6, m = Math.min(W / 7.5, H / 5.2);    // m: 자석 반 폭 (px)
+  ctx.fillStyle = sim.mat().color; ctx.globalAlpha = 0.55; ctx.fillRect(8, 26, W - 16, H - 34); ctx.globalAlpha = 1;
+  ctx.fillStyle = "#333"; ctx.font = "bold 12px system-ui"; ctx.textAlign = "left"; ctx.textBaseline = "top";
+  ctx.fillText(`확대 · ${pole} 극 자석 위의 원판 (위에서 봄)`, 8, 4);
+  if (!on) { ctx.font = "13px system-ui"; ctx.textAlign = "center"; ctx.fillText("자석 없음 → 자속도 와전류도 없음", cx, cy); return; }
+  // 자석 위치 (점선 사각형)
+  ctx.setLineDash([5, 4]); ctx.strokeStyle = isN ? "#d62828" : "#1d4ed8"; ctx.lineWidth = 2; ctx.strokeRect(cx - m, cy - m, 2 * m, 2 * m); ctx.setLineDash([]);
+  ctx.fillStyle = isN ? "#d62828" : "#1d4ed8"; ctx.font = "11px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "top";
+  ctx.fillText(`(원판 아래 ${pole} 극 자석)`, cx, cy + m + 3);
+  // 상대 운동 방향
+  const sx = dir >= 0 ? 1 : -1;
+  if (moving) arrow(ctx, cx - 1.2 * m * sx, cy + 1.75 * m, cx + 1.2 * m * sx, cy + 1.75 * m, "#111", 2.5, "");
+  ctx.fillStyle = "#111"; ctx.font = "11px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "top";
+  ctx.fillText(moving ? "자석이 원판에 대해 움직이는 방향" : "상대 운동 없음 → 자속 변화·와전류·힘 없음", cx, cy + 1.75 * m + 8);
+  // ① 자속: 자석 위 ⊙ (N, 위로) / ⊗ (S, 아래로)
+  if (lay.B) for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) sym(ctx, cx + i * 0.62 * m, cy + j * 0.62 * m, 7, isN ? "dot" : "cross", COL.B);
+  if (lay.B) { ctx.fillStyle = COL.B; ctx.font = "bold 11px system-ui"; ctx.textAlign = "left"; ctx.textBaseline = "top";
+    ctx.fillText(isN ? "⊙ 자속 B 가 위로 나옴" : "⊗ 자속 B 가 아래로 들어감", 12, 22); }
+  if (!moving) return;
+  const ax = cx + sx * 1.55 * m, bx = cx - sx * 1.55 * m;     // 앞쪽(ahead), 뒤쪽(behind) 고리 중심
+  // ② 자속 변화
+  if (lay.dPhi) {
+    ctx.font = "bold 12px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+    ctx.fillStyle = "#b45309"; ctx.fillText("앞쪽: 자속(크기) 증가", ax, cy - 1.0 * m - 4); ctx.fillText("뒤쪽: 자속(크기) 감소", bx, cy - 1.0 * m - 4);
+  }
+  // ③ 와전류 고리: N 극 앞 = 시계, 뒤 = 반시계 (S 극은 반대). 자석이 왼쪽으로 가면 앞뒤가 바뀜.
+  const aheadCW = isN;
+  if (lay.eddy) {
+    loop(ctx, ax, cy, 0.95 * m, 0.95 * m, aheadCW, lev, 4, 3);
+    loop(ctx, bx, cy, 0.95 * m, 0.95 * m, !aheadCW, lev, 4, 3);
+    // 자석 바로 위: 두 고리 전류가 같은 방향으로 합쳐짐 (N: 화면 위쪽, S: 아래쪽 — 상대 운동 방향에 따라)
+    // N, 오른쪽 이동: 앞쪽 시계 고리의 왼쪽 변은 화면 위로 흐름
+    const up = (isN ? 1 : -1) * sx;   // +1: 화면 위
+    arrow(ctx, cx, cy + up * 0.8 * m, cx, cy - up * 0.8 * m, COL.eddy, 5, "");
+    ctx.fillStyle = COL.eddy; ctx.font = "bold 12px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = up > 0 ? "bottom" : "top";
+    ctx.fillText("와전류 J", cx, cy - up * (0.8 * m + 3));
+  }
+  // ④ 와전류가 만든 자계: 앞쪽은 증가를 막는 방향, 뒤쪽은 감소를 막는 방향
+  if (lay.ind) {
+    sym(ctx, ax, cy, 9, isN ? "cross" : "dot", COL.ind, 2.2); sym(ctx, bx, cy, 9, isN ? "dot" : "cross", COL.ind, 2.2);
+    ctx.fillStyle = COL.ind; ctx.font = "11px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "top";
+    ctx.fillText("증가를 막는 자계", ax + sx * 0.25 * m, cy + 0.55 * m); ctx.fillText("감소를 막는 자계", bx - sx * 0.25 * m, cy + 0.55 * m);
+  }
+  // ⑤ 힘 F = J × B → 자석이 움직이는 방향으로 원판이 끌림
+  if (lay.F) { arrow(ctx, cx, cy, cx + sx * 1.15 * m, cy, COL.F, 5, "");
+    ctx.fillStyle = COL.F; ctx.font = "bold 12px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "bottom"; ctx.fillText("힘 F", cx + sx * 0.75 * m, cy - 5); }
+}
+
+// ---- 옆에서 본 단면: 원판(가로 판), 아래 자석, 자속선, 판을 지나는 와전류 (⊙ 나옴 / ⊗ 들어감) ----
+function drawSide(o, lay) {
+  const [ctx, W, H] = RTCharts.setupCanvas($("side")); ctx.clearRect(0, 0, W, H);
+  const pole = $("pole").value, isN = pole === "N", on = sim.c.magnetOn;
+  const dir = Math.sign(o.dw), moving = on && dir !== 0 && sim.mat().sigma > 0 && Math.abs(o.dw) > 1e-3;
+  const sx = dir >= 0 ? 1 : -1, cx = W / 2, m = Math.min(W / 8, 40);
+  const yTop = 62, th = 22, yBot = yTop + th;            // 원판 단면
+  ctx.fillStyle = "#333"; ctx.font = "bold 12px system-ui"; ctx.textAlign = "left"; ctx.textBaseline = "top";
+  ctx.fillText(`단면 (옆에서 봄) · ${pole} 극 자석`, 8, 4);
+  ctx.fillStyle = sim.mat().color; ctx.fillRect(12, yTop, W - 24, th); ctx.strokeStyle = "#555"; ctx.lineWidth = 1; ctx.strokeRect(12, yTop, W - 24, th);
+  ctx.fillStyle = "#333"; ctx.font = "11px system-ui"; ctx.textAlign = "right"; ctx.textBaseline = "middle"; ctx.fillText("원판", W - 16, yTop - 9);
+  if (!on) return;
+  const gapPx = 10 + 3 * sim.c.gap * 1000, my = yBot + gapPx;
+  ctx.fillStyle = isN ? "#d62828" : "#1d4ed8"; ctx.fillRect(cx - m, my, 2 * m, 34);
+  ctx.fillStyle = "#fff"; ctx.font = "bold 14px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(pole, cx, my + 12);
+  ctx.fillStyle = "#333"; ctx.font = "10px system-ui"; ctx.textAlign = "right"; ctx.fillText(`공극 ${(sim.c.gap * 1000).toFixed(1)} mm`, cx - m - 6, my + 10);
+  // ① 자속선: N 은 위로, S 는 아래로 (판을 뚫고 지나감, 가장자리는 휘어 나감)
+  if (lay.B) {
+    const up = isN ? 1 : -1;
+    for (let k = -2; k <= 2; k++) {
+      const x = cx + k * 0.42 * m, bend = k * 0.55 * m;
+      ctx.strokeStyle = COL.B; ctx.lineWidth = 1.6; ctx.beginPath();
+      ctx.moveTo(x, my); ctx.quadraticCurveTo(x, yTop - 10, x + bend, 18); ctx.stroke();
+      const yA = (yTop + yBot) / 2 - 26;
+      if (up > 0) arrow(ctx, x + bend * 0.2, yA + 10, x + bend * 0.35, yA - 4, COL.B, 1.6);
+      else arrow(ctx, x + bend * 0.35, yA - 4, x + bend * 0.2, yA + 10, COL.B, 1.6);
+    }
+    ctx.fillStyle = COL.B; ctx.font = "bold 11px system-ui"; ctx.textAlign = "left"; ctx.textBaseline = "top";
+    ctx.fillText(isN ? "자속 B ↑ (N 극에서 나옴)" : "자속 B ↓ (S 극으로 들어감)", 12, 22);
+  }
+  if (!moving) return;
+  arrow(ctx, cx - sx * m, my + 44, cx + sx * m, my + 44, "#111", 2.2);
+  ctx.fillStyle = "#111"; ctx.font = "10px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "top"; ctx.fillText("자석의 상대 이동", cx, my + 50);
+  // ③ 판 단면을 지나는 와전류: 자석 위는 ⊗/⊙ 강하게, 양 바깥은 반대 방향으로 되돌아옴
+  if (lay.eddy) {
+    // 화면에 수직인 방향: 확대 그림의 '화면 위' 방향이 단면에서는 지면 안쪽(⊗)이 되도록 맞춤
+    const centerIn = (isN ? 1 : -1) * sx > 0;    // 자석 위 전류가 지면 안쪽(⊗)?
+    const yc = (yTop + yBot) / 2;
+    sym(ctx, cx, yc, 9, centerIn ? "cross" : "dot", COL.eddy, 2.4);
+    sym(ctx, cx - 0.3 * m, yc, 6, centerIn ? "cross" : "dot", COL.eddy, 1.8); sym(ctx, cx + 0.3 * m, yc, 6, centerIn ? "cross" : "dot", COL.eddy, 1.8);
+    sym(ctx, cx + 2.6 * m, yc, 7, centerIn ? "dot" : "cross", COL.eddy, 1.8); sym(ctx, cx - 2.6 * m, yc, 7, centerIn ? "dot" : "cross", COL.eddy, 1.8);
+    ctx.fillStyle = COL.eddy; ctx.font = "11px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "top";
+    ctx.fillText("되돌아오는 와전류", cx + 2.6 * m, yBot + 4); ctx.fillText("되돌아오는 와전류", cx - 2.6 * m, yBot + 4);
+    ctx.textAlign = "right"; ctx.textBaseline = "bottom";
+    ctx.fillText("와전류: ⊗ 지면 안으로 · ⊙ 지면 밖으로", W - 12, H - 4);
+  }
+  // ⑤ 힘: 판이 자석 이동 방향으로 끌림
+  if (lay.F) arrow(ctx, cx + sx * 0.9 * m, yTop - 30, cx + sx * 2.4 * m, yTop - 30, COL.F, 4, "힘 F");
+}
+
 // ---- 토크–원판 속도 곡선 ----
 function drawTN(o) {
   const [ctx, W, H] = RTCharts.setupCanvas($("tn")); ctx.clearRect(0, 0, W, H);
@@ -149,7 +278,7 @@ function frame(now) {
       if (sim.t >= nextSample) { const o = sim.out(); sW.push(o.t, [o.wm * RPM, o.wd * RPM]); sT.push(o.t, [o.T * 1000, o.Tb * 1000]); nextSample = o.t + win / 500; }
     }
   }
-  const o = sim.out(); drawDisk(o); drawTN(o); [sW, sT].forEach((s) => s.draw(o.t, win));
+  const o = sim.out(), lay = L(); drawDisk(o, lay); drawZoom(o, lay); drawSide(o, lay); drawTN(o); [sW, sT].forEach((s) => s.draw(o.t, win));
   $("ro").innerHTML = `<span>시각 <b>${o.t.toFixed(2)} s</b></span><span>자석 <b>${(o.wm * RPM).toFixed(0)} rpm</b></span><span>원판 <b>${(o.wd * RPM).toFixed(1)} rpm</b></span>` +
     `<span>슬립 <b>${isNaN(o.slip) ? "—" : (o.slip * 100).toFixed(1) + " %"}</b></span><span>와전류 토크 <b>${(o.T * 1000).toFixed(2)} mN·m</b></span>` +
     `<span>B <b>${o.B.toFixed(2)} T</b></span><span>원판 관성 <b>${(o.J * 1e3).toFixed(2)} g·m²</b></span>`;
