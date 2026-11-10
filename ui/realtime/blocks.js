@@ -195,6 +195,89 @@
         for (let i = 0; i < n; i++) s.sim.step(h / n);
       },
     },
+    im: {
+      cat: "전력·전동기", name: "유도전동기",
+      ins: (b) => (b.p.mode === "V/f" ? ["f*", "V*", "TL"] : ["id*", "iq*", "TL"]),
+      outs: ["ω", "n", "Te", "Is", "id", "iq", "f"], ft: false,
+      outUnits: ["rad/s", "rpm", "N·m", "A", "A", "A", "Hz"],
+      params: {
+        mode: { label: "입력 방식", type: "select", v: "벡터", options: ["벡터", "V/f"],
+                help: "벡터: id*·iq* [A] 를 받아 내부 전류 제어기(회전자 자속 기준)가 전압을 만듦. V/f: 주파수 f* [Hz] 와 선간 전압 V* [V] 로 바로 운전." },
+        TL: { label: "부하 토크 (TL 입력이 없을 때)", type: "number", v: 0, unit: "N·m" },
+        friction: { label: "마찰형 부하 (회전 반대 방향)", type: "bool", v: true },
+        wci: { label: "내부 전류 제어 대역폭 ωci", type: "number", v: 1500, unit: "rad/s" },
+      },
+      desc: "인버터가 들어 있는 3상 농형 유도전동기입니다 (파라미터는 유도전동기 시뮬레이터 페이지 값). " +
+            "벡터 방식: 간접 벡터 제어로 id*(자속분)·iq*(토크분) 전류를 따라가게 하고, 바깥 속도 루프는 블록으로 짭니다. " +
+            "V/f 방식: 인버터 출력 주파수 f* 와 전압 V* 를 직접 줍니다. 출력: ω [rad/s], n [rpm], Te, 상전류 실효값 Is, id, iq, 인버터 주파수 f.",
+      text: (b) => `${b.p.mode} 입력  TL=${b.p.TL}`,
+      title: () => "유도전동기",
+      init: (b, env) => {
+        if (!env.im || typeof ACEngine === "undefined") throw new Error("유도전동기 파라미터가 없습니다");
+        const m = new ACEngine.IMSim(env.im.p); m.set({ mode: "ext" });
+        return { m, th: 0, xd: 0, xq: 0, f: 0, id: 0, iq: 0 };
+      },
+      out: (b, s) => { const o = s.m.out(); return [o.w, o.w * RPM, o.Te, o.Is, s.id, s.iq, s.f]; },
+      update: (b, s, u, h, t, env) => {
+        const P = env.im.p, m = s.m, pp = m.pp, Vmax = Math.sqrt(2 / 3) * P.V, o = m.out();
+        let va, vb;
+        if (b.p.mode === "V/f") {
+          const f = num(u[0], 0), V = clip(num(u[1], 0), 0, P.V);
+          s.th += 2 * Math.PI * f * h; s.f = f;
+          va = Math.sqrt(2 / 3) * V * Math.cos(s.th); vb = Math.sqrt(2 / 3) * V * Math.sin(s.th);
+          s.id = o.id; s.iq = o.iq;
+        } else {
+          const idr = Math.max(num(u[0], 0), 1e-3), iqr = num(u[1], 0);
+          const tr = m.Lr / P.Rr, sig = m.Ls - P.Lm * P.Lm / m.Lr, Rsig = P.Rs + P.Rr * (P.Lm / m.Lr) ** 2;
+          const we = pp * o.w + iqr / (tr * idr);
+          s.th += we * h; s.f = we / (2 * Math.PI);
+          const c = Math.cos(s.th), sn = Math.sin(s.th);
+          const id = o.isa * c + o.isb * sn, iq = -o.isa * sn + o.isb * c;
+          const kp = b.p.wci * sig, ki = b.p.wci * Rsig;
+          const ed = idr - id, eq = iqr - iq;
+          let vd = kp * ed + s.xd - we * sig * iq, vq = kp * eq + s.xq + we * (sig * id + P.Lm * P.Lm / m.Lr * idr);
+          const vm = Math.hypot(vd, vq);
+          if (vm > Vmax) { vd *= Vmax / vm; vq *= Vmax / vm; } else { s.xd += ki * ed * h; s.xq += ki * eq * h; }
+          va = vd * c - vq * sn; vb = vd * sn + vq * c; s.id = id; s.iq = iq;
+        }
+        const TL = u[2] === undefined ? +b.p.TL : u[2];
+        m.set({ va, vb, TL, friction: !!b.p.friction });
+        const n = Math.max(1, Math.ceil(h / 5e-5 - 1e-9));
+        for (let i = 0; i < n; i++) m.step(h / n);
+      },
+    },
+    pmsm: {
+      cat: "전력·전동기", name: "PMSM", ins: ["id*", "iq*", "TL"], outs: ["ω", "n", "Te", "id", "iq", "|v|"], ft: false,
+      outUnits: ["rad/s", "rpm", "N·m", "A", "A", "V"],
+      params: {
+        TL: { label: "부하 토크 (TL 입력이 없을 때)", type: "number", v: 0, unit: "N·m" },
+        friction: { label: "마찰형 부하 (회전 반대 방향)", type: "bool", v: true },
+        wci: { label: "내부 전류 제어 대역폭 ωci", type: "number", v: 2000, unit: "rad/s" },
+        ff: { label: "비간섭 보상 (−ωLq·iq, ω(Ld·id + λf))", type: "bool", v: true },
+      },
+      desc: "인버터와 dq 전류 제어기가 들어 있는 PMSM 입니다 (파라미터는 PMSM 시뮬레이터 페이지 값). " +
+            "id*·iq* [A] 를 넣으면 내부 전류 PI 가 따라가게 하고, 전압은 Vdc/√3 원으로 제한됩니다. " +
+            "출력: ω [rad/s], n [rpm], Te, id, iq, 전압 크기 |v| [V]. 속도 루프·MTPA·약계자는 블록으로 짜 보세요.",
+      text: (b) => `dq 전류 입력  TL=${b.p.TL}`,
+      init: (b, env) => {
+        if (!env.pmsm || typeof ACEngine === "undefined") throw new Error("PMSM 파라미터가 없습니다");
+        return { m: new ACEngine.PMSMSim(env.pmsm.p), xd: 0, xq: 0, v: 0 };
+      },
+      out: (b, s) => { const o = s.m.out(); return [o.w, o.w * RPM, o.Te, o.id, o.iq, s.v]; },
+      update: (b, s, u, h, t, env) => {
+        const P = env.pmsm.p, m = s.m, o = m.out(), we = m.pp * o.w, Vmax = P.Vdc / Math.sqrt(3);
+        const ed = num(u[0], 0) - o.id, eq = num(u[1], 0) - o.iq;
+        let vd = b.p.wci * P.Ld * ed + s.xd + (b.p.ff ? -we * P.Lq * o.iq : 0);
+        let vq = b.p.wci * P.Lq * eq + s.xq + (b.p.ff ? we * (P.Ld * o.id + P.lam) : 0);
+        const vm = Math.hypot(vd, vq);
+        if (vm > Vmax) { vd *= Vmax / vm; vq *= Vmax / vm; } else { s.xd += b.p.wci * P.Rs * ed * h; s.xq += b.p.wci * P.Rs * eq * h; }
+        s.v = Math.hypot(vd, vq);
+        const TL = u[2] === undefined ? +b.p.TL : u[2];
+        m.set({ vd, vq, TL, friction: !!b.p.friction });
+        const n = Math.max(1, Math.ceil(h / 2e-5 - 1e-9));
+        for (let i = 0; i < n; i++) m.step(h / n);
+      },
+    },
     scope: {
       cat: "관측", name: "스코프", ins: ["a", "b", "c"], outs: [], ft: true, sink: true,
       params: { name: { label: "그래프 제목", type: "text", v: "스코프" },
@@ -318,8 +401,8 @@
       const msgs = [];
       if (this.loopIds.length) msgs.push("⚠️ 대수 루프: " + this.loopIds.map((id) => titleOf(this.dg.get(id))).join(", ") +
         " 가 적분 요소 없이 고리를 이룹니다. 그 블록들의 출력은 0 으로 계산합니다.");
-      for (const b of this.dg.blocks) if ((b.type === "motor" || b.type === "bldc") && !this.inWire[`${b.id}:0`])
-        msgs.push(`ℹ️ ${titleOf(b)} 의 ${insOf(b)[0]} 입력이 연결되지 않아 전압 0 으로 계산합니다.`);
+      for (const b of this.dg.blocks) if (["motor", "bldc", "im", "pmsm"].includes(b.type) && !this.inWire[`${b.id}:0`])
+        msgs.push(`ℹ️ ${titleOf(b)} 의 ${insOf(b)[0]} 입력이 연결되지 않아 0 으로 계산합니다.`);
       return msgs;
     }
   }
@@ -469,6 +552,56 @@
         const sc2 = m.add("scope", c(3), 270, { name: "상전류 [A]" });
         m.w(ref, 0, k, 0); m.w(k, 0, mo, 0); m.w(ref, 0, sc1, 0); m.w(mo, 0, sc1, 1);
         m.w(mo, 3, sc2, 0); m.w(mo, 4, sc2, 1); m.w(mo, 5, sc2, 2);
+      };
+    }
+    if (env.im) {
+      const I = env.im, ip = I.p, ppI = Math.round(ip.poles / 2), idr = I.idRated;
+      const gI = ACEngine.imGains(ip, 1500, 30, idr), nsI = 120 * ip.f / ip.poles;
+      const iqMax = +Math.sqrt(Math.max(I.Ilim * I.Ilim - idr * idr, 1)).toPrecision(3);
+      T["유도전동기: V/f 제어 (속도 지령 → 주파수·전압)"] = (dg) => {
+        const m = mk(dg);
+        const ref = m.add("square", c(0), 40, { amp: Math.round(0.25 * nsI), period: 2, offset: Math.round(0.6 * nsI), rpm: true }, "속도 지령 n*");
+        const lp = m.add("lpf", c(1), 40, { tau: 0.15 }, "가감속 완화");
+        const kf = m.add("gain", c(2), 40, { K: r4(ppI / (2 * Math.PI)) }, "f = (P/2)·ω/2π");
+        const kv = m.add("gain", c(3), 150, { K: r4(ip.V / ip.f) }, "V/f 비율");
+        const lv = m.add("limit", c(4), 150, { lo: 0, hi: ip.V }, "전압 제한");
+        const mo = m.add("im", c(5), 40, { mode: "V/f" }, "유도전동기");
+        const tl = m.add("step", c(3), 300, { t0: 1.0, v0: 0, v1: Math.round(I.TL) }, "부하 토크 TL");
+        const sc1 = m.add("scope", c(0), 300, { name: "속도", rpm: true });
+        const sc2 = m.add("scope", c(1), 300, { name: "토크·전류" });
+        m.w(ref, 0, lp, 0); m.w(lp, 0, kf, 0); m.w(kf, 0, mo, 0); m.w(kf, 0, kv, 0); m.w(kv, 0, lv, 0); m.w(lv, 0, mo, 1); m.w(tl, 0, mo, 2);
+        m.w(ref, 0, sc1, 0); m.w(mo, 0, sc1, 1); m.w(mo, 2, sc2, 0); m.w(mo, 3, sc2, 1); m.w(tl, 0, sc2, 2);
+      };
+      T["유도전동기: 벡터 제어 (속도 PI → iq*)"] = (dg) => {
+        const m = mk(dg);
+        const ref = m.add("const", c(0), 40, { value: Math.round(0.8 * nsI), rpm: true }, "속도 지령 n*");
+        const s1 = m.add("sum", c(1), 40, { signs: "+-" }, "속도 오차");
+        const pw = m.add("pid", c(2), 40, { mode: "PI", Kp: r4(gI.Kpw), Ki: r4(gI.Kiw), lo: -iqMax, hi: iqMax }, "속도 PI → iq*");
+        const idc = m.add("const", c(2), 170, { value: +idr.toPrecision(3) }, "자속 전류 id*");
+        const mo = m.add("im", c(4), 40, { mode: "벡터" }, "유도전동기");
+        const tl = m.add("step", c(3), 300, { t0: 1.0, v0: 0, v1: Math.round(I.TL) }, "부하 토크 TL");
+        const sc1 = m.add("scope", c(0), 300, { name: "속도", rpm: true });
+        const sc2 = m.add("scope", c(1), 300, { name: "dq 전류 [A]" });
+        const sc3 = m.add("scope", c(2), 300, { name: "토크 [N·m]" });
+        m.w(ref, 0, s1, 0); m.w(s1, 0, pw, 0); m.w(idc, 0, mo, 0); m.w(pw, 0, mo, 1); m.w(mo, 0, s1, 1); m.w(tl, 0, mo, 2);
+        m.w(ref, 0, sc1, 0); m.w(mo, 0, sc1, 1); m.w(pw, 0, sc2, 0); m.w(mo, 5, sc2, 1); m.w(mo, 4, sc2, 2); m.w(mo, 2, sc3, 0); m.w(tl, 0, sc3, 1);
+      };
+    }
+    if (env.pmsm) {
+      const Q = env.pmsm, qp = Q.p, gQ = ACEngine.pmsmGains(qp, 2000, 100);
+      T["PMSM: 벡터 제어 (id = 0, 속도 PI → iq*)"] = (dg) => {
+        const m = mk(dg);
+        const ref = m.add("square", c(0), 40, { amp: Math.round(0.4 * Q.nBase), period: 0.6, offset: Math.round(0.5 * Q.nBase), rpm: true }, "속도 지령 n*");
+        const s1 = m.add("sum", c(1), 40, { signs: "+-" }, "속도 오차");
+        const pw = m.add("pid", c(2), 40, { mode: "PI", Kp: r4(gQ.Kpw), Ki: r4(gQ.Kiw), lo: -Q.Imax, hi: Q.Imax }, "속도 PI → iq*");
+        const idc = m.add("const", c(2), 170, { value: 0 }, "id* = 0");
+        const mo = m.add("pmsm", c(4), 40, {}, "PMSM");
+        const tl = m.add("step", c(3), 300, { t0: 0.3, v0: 0, v1: +(+Q.TL).toPrecision(3) }, "부하 토크 TL");
+        const sc1 = m.add("scope", c(0), 300, { name: "속도", rpm: true });
+        const sc2 = m.add("scope", c(1), 300, { name: "dq 전류 [A]" });
+        const sc3 = m.add("scope", c(2), 300, { name: "토크·전압" });
+        m.w(ref, 0, s1, 0); m.w(s1, 0, pw, 0); m.w(idc, 0, mo, 0); m.w(pw, 0, mo, 1); m.w(mo, 0, s1, 1); m.w(tl, 0, mo, 2);
+        m.w(ref, 0, sc1, 0); m.w(mo, 0, sc1, 1); m.w(pw, 0, sc2, 0); m.w(mo, 4, sc2, 1); m.w(mo, 3, sc2, 2); m.w(mo, 2, sc3, 0); m.w(mo, 5, sc3, 1);
       };
     }
     T["빈 화면"] = () => {};

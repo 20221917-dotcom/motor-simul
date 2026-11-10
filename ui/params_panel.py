@@ -51,7 +51,7 @@ def render_params(model_cls):
         top[0].caption("모든 값은 SI 단위로 계산되며 단위는 각 입력칸에 표시되어 있습니다. "
                        "선택한 종류에 해당하지 않는 파라미터는 숨겨집니다.")
         top[1].button("기본값으로 초기화", on_click=reset_defaults, args=(specs,),
-                      use_container_width=True)
+                      width="stretch")
         params = {}
         # 모든 그룹을 한 줄에 (넓은 화면 기준, 좁은 화면에서는 Streamlit 이 자동으로 세로 배치)
         per_row = len(groups)

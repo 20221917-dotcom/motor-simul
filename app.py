@@ -4,7 +4,31 @@
 각 페이지의 파라미터 설정은 메인 화면 위쪽에 있다.
 새 전동기 페이지를 추가할 때는 ui/pages/ 에 render 함수를 만들고 아래 목록에 넣으면 된다.
 """
+import pathlib
+import sys
+
 import streamlit as st
+
+# ---- 코드가 갱신되면 옛 모듈을 비우고 새로 불러오기 ------------------------------
+# Streamlit(특히 Streamlit Cloud 자동 업데이트)은 메인 파일만 다시 실행하고, 이미 불러온
+# 하위 모듈은 서버를 재시작하기 전까지 예전 것을 그대로 씁니다. 그러면 새 기능(예: 새 전동기
+# 모델)이 등록되지 않아 KeyError 가 납니다. 소스 파일이 바뀐 것을 감지하면 프로젝트 모듈을
+# sys.modules 에서 지워 다시 불러오게 합니다.
+_ROOT = pathlib.Path(__file__).resolve().parent
+_PKGS = ("core", "motors", "control", "concepts", "ui")
+
+
+def _refresh_project_modules():
+    stamp = max((f.stat().st_mtime_ns for pkg in _PKGS for f in (_ROOT / pkg).rglob("*.py")), default=0)
+    if getattr(sys, "_motor_sim_src_stamp", None) == stamp:
+        return
+    for name in list(sys.modules):
+        if name.split(".")[0] in _PKGS:
+            sys.modules.pop(name, None)
+    sys._motor_sim_src_stamp = stamp
+
+
+_refresh_project_modules()
 
 from ui.pages import bldc, concepts, dc_blocks, dc_sim, induction, pmsm
 
@@ -22,7 +46,7 @@ pages = {
         st.Page(pmsm.render, title="PMSM 시뮬레이터 (동기)", icon="🧲", url_path="pmsm"),
     ],
     "제어 실습": [
-        st.Page(dc_blocks.render, title="제어 블록 편집기 (DC · BLDC)", icon="🧩", url_path="blocks"),
+        st.Page(dc_blocks.render, title="제어 블록 편집기 (DC·BLDC·교류)", icon="🧩", url_path="blocks"),
     ],
     "관련 개념": [
         st.Page(concepts.em_basics, title="전자기 기초 (힘·기전력)", icon="🧭", url_path="em-basics"),

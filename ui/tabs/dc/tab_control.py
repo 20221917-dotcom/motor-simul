@@ -89,7 +89,7 @@ def _settings(params, kphi):
         kpw, kiw, kpi, kii = _recommended(params, kphi)
         st.caption(f"추천: Kpω={kpw:.3g}, Kiω={kiw:.3g}, Kpi={kpi:.3g}, Kii={kii:.3g}")
         st.button("추천 게인 적용", on_click=_apply_rec, args=(params, kphi),
-                  use_container_width=True)
+                  width="stretch")
         st.checkbox("안티와인드업", key="ct_aw")
         st.checkbox("역기전력 피드포워드", key="ct_ff")
         st.checkbox("개루프 운전과 비교", key="ct_ol")
@@ -178,7 +178,7 @@ def render(model, params):
         return
     _init_state(params, kphi)
     st.markdown("#### 제어 구조")
-    st.plotly_chart(control_block_diagram(st.session_state.ct_ff), use_container_width=True,
+    st.plotly_chart(control_block_diagram(st.session_state.ct_ff), width="stretch",
                     config={"staticPlot": True})
     with st.expander("제어 구조와 게인 설계 설명", expanded=False):
         st.markdown("""
@@ -221,5 +221,5 @@ def render(model, params):
         r = _run(p_items, kphi, items, False)
         ro = _run(p_items, kphi, items, True) if st.session_state.ct_ol else None
         _summary(r, ro, cfg, params)
-        st.plotly_chart(_plot(r, ro, cfg), use_container_width=True)
+        st.plotly_chart(_plot(r, ro, cfg), width="stretch")
 

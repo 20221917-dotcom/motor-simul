@@ -55,7 +55,7 @@ def torque_ripple_section():
                              line=dict(color="#264653", width=3)))
     style(fig, 340, xaxis_title="회전각 θ [°]", yaxis_title="토크 (코일 1개 최대 = 1) [p.u.]")
     fig.update_xaxes(dtick=90)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     c = st.columns(3)
     info_metric(c[0], "정류자 없음: 평균 토크", f"{np.mean(w['no_comm']):.3f} p.u.",
                 help="한 바퀴 평균 0 → 진동만 하고 회전을 계속하지 못함")
@@ -85,7 +85,7 @@ def render(model, params):
     c1, c2 = st.columns([3, 2])
     with c1:
         st.plotly_chart(wiring_diagram(model.excitation, getattr(model, "variant", "")),
-                        use_container_width=True,
+                        width="stretch",
                         config={"staticPlot": True})
     with c2:
         st.markdown(model.summary_md)

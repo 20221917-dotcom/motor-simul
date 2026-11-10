@@ -65,6 +65,7 @@ dialog textarea { width: 100%; height: 300px; font-family: monospace; font-size:
 <script>/*ENGINE*/</script>
 <script>/*CHARTS*/</script>
 <script>/*BLDC*/</script>
+<script>/*AC*/</script>
 <script>/*BLOCKS*/</script>
 <script>
 const CFG = /*CONFIG*/;
@@ -74,7 +75,7 @@ const { DEF, Diagram, Runner, insOf, outsOf, titleOf, RPM } = Blocks;
 DEF.motor.params.kind.options = Object.keys(CFG.motors);
 DEF.motor.params.kind.v = CFG.defaultMotor;
 DEF.chopper.params.Vdc.v = CFG.ctrl.V;
-const env = { motors: CFG.motors, defaultMotor: CFG.defaultMotor, ctrl: CFG.ctrl, bldc: CFG.bldc };
+const env = { motors: CFG.motors, defaultMotor: CFG.defaultMotor, ctrl: CFG.ctrl, bldc: CFG.bldc, im: CFG.im, pmsm: CFG.pmsm };
 const TPL = Blocks.templates(env);
 const STORE = "dcmotor-block-diagram-v1";
 const dg = new Diagram();
@@ -232,7 +233,8 @@ const PALETTE = [
   ["신호원", [["const", "상수", {}], ["const", "속도 지령 (rpm)", { value: 1000, rpm: true }], ["step", "계단", {}], ["square", "사각파", {}], ["sine", "사인파", {}]]],
   ["연산", [["sum", "합산점 Σ (+−)", {}], ["sum", "합산점 Σ (++)", { signs: "++" }], ["gain", "게인 K", {}], ["limit", "리미터", {}], ["integ", "적분기 1/s", {}], ["lpf", "1차 지연 필터", {}]]],
   ["제어기", [["pid", "P 제어기", { mode: "P", Ki: 0 }], ["pid", "PI 제어기", { mode: "PI" }], ["pid", "PID 제어기", { mode: "PID", Kd: 0.01 }]]],
-  ["전력·전동기", [["chopper", "초퍼 (DC용)", {}], ["motor", "DC 전동기", {}], ["bldc", "BLDC 전동기 (인버터 포함)", {}]]],
+  ["전력·전동기", [["chopper", "초퍼 (DC용)", {}], ["motor", "DC 전동기", {}], ["bldc", "BLDC 전동기 (인버터 포함)", {}],
+    ["im", "유도전동기 (벡터 입력)", { mode: "벡터" }], ["im", "유도전동기 (V/f 입력)", { mode: "V/f" }], ["pmsm", "PMSM (dq 전류 입력)", {}]]],
   ["관측", [["scope", "스코프", {}], ["display", "숫자 표시", {}]]],
 ];
 function freeSpot(type, p) {
@@ -263,7 +265,7 @@ PALETTE.forEach(([cat, items]) => {
 });
 
 // ---------------- 속성 패널 ----------------
-const STRUCT_KEYS = new Set(["signs", "kind", "quad"]);
+const STRUCT_KEYS = new Set(["signs", "kind", "quad", "mode"]);
 function renderProps() {
   const P = $("props"); P.innerHTML = "";
   if (!sel) {
@@ -411,13 +413,15 @@ function frame(now) {
       const v = runner.inputs(b)[0];
       dispText[b.id].textContent = v === undefined ? "—" : `${(+v).toPrecision(4)} ${b.p.unit || ""}`;
     }
-    const mo = dg.blocks.find((b) => b.type === "motor" || b.type === "bldc");
+    const mo = dg.blocks.find((b) => ["motor", "bldc", "im", "pmsm"].includes(b.type));
     const o = mo && runner.out[mo.id];
     let txt = `<span>시뮬레이션 시각 <b>${runner.t.toFixed(3)} s</b></span>`;
     if (o && mo.type === "motor") txt += `<span>${titleOf(mo)}: n <b>${o[1].toFixed(1)} rpm</b></span><span>Ia <b>${o[2].toFixed(2)} A</b></span>` +
       `<span>E <b>${o[3].toFixed(1)} V</b></span><span>Te <b>${o[4].toFixed(2)} N·m</b></span>`;
     if (o && mo.type === "bldc") txt += `<span>${titleOf(mo)}: n <b>${o[1].toFixed(0)} rpm</b></span><span>토크 전류 <b>${o[2].toFixed(2)} A</b></span>` +
       `<span>ia <b>${o[3].toFixed(2)} A</b></span><span>Te <b>${o[6].toFixed(3)} N·m</b></span>`;
+    if (o && (mo.type === "im" || mo.type === "pmsm")) txt += `<span>${titleOf(mo)}: n <b>${o[1].toFixed(0)} rpm</b></span><span>Te <b>${o[2].toFixed(2)} N·m</b></span>` +
+      (mo.type === "im" ? `<span>Is <b>${o[3].toFixed(1)} A</b></span><span>f <b>${o[6].toFixed(1)} Hz</b></span>` : `<span>id <b>${o[3].toFixed(2)}</b> iq <b>${o[4].toFixed(2)} A</b></span><span>|v| <b>${o[5].toFixed(0)} V</b></span>`);
     $("ro").innerHTML = txt;
   }
   requestAnimationFrame(frame);

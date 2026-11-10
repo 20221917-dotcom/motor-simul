@@ -15,11 +15,11 @@ def _motor_cfg(m):
 
 
 def render():
-    st.title("🧩 제어 블록 편집기 (DC · BLDC)")
+    st.title("🧩 제어 블록 편집기")
     st.caption("블록을 끌어다 놓고 선으로 이어 제어 구조를 직접 만들고, 바로 실시간으로 돌려 봅니다. "
                "전류 제어기만, 속도 제어기만, P/PI/PID 바꾸기, 리미터·필터 추가처럼 자유롭게 바꿀 수 있습니다. "
-               "DC 전동기 블록은 **DC 전동기 시뮬레이터**, BLDC 전동기 블록은 **BLDC 전동기 시뮬레이터** 페이지의 "
-               "파라미터 설정 값을 씁니다. BLDC 템플릿은 위쪽 템플릿 목록에서 'BLDC:' 로 시작합니다.")
+               "전동기 블록(DC · BLDC · 유도전동기 · PMSM)은 각 시뮬레이터 페이지의 파라미터 설정 값을 씁니다. "
+               "템플릿 목록에서 'BLDC:', '유도전동기:', 'PMSM:' 으로 시작하는 항목이 각 전동기용입니다.")
     labels = [v[0] for v in VARIANTS]
     ss = st.session_state
     last = ss.get("_keep_motor_choice", "타여자")
@@ -42,13 +42,23 @@ def render():
     bp = params_from_session(registry.get("bldc"))
     bldc = {"p": {k: float(bp[k]) for k in ["Vdc", "R", "L", "ke", "poles", "J", "B"]},
             "TL": float(bp["TL"]), "Ilim": 2 * float(bp["I_rated"])}
-    realtime.render(realtime.editor_html(motors, pick, ctrl, bldc), height=1180)
+    imm = registry.get("induction")(params_from_session(registry.get("induction")))
+    imc = realtime._im_cfg(imm)
+    pmm = registry.get("pmsm")(params_from_session(registry.get("pmsm")))
+    pmc = realtime._pmsm_cfg(pmm)
+    Ls = imm.p["Lls"] + imm.p["Lm"]
+    im_env = {"p": imc["p"], "TL": float(imm.p["TL"]), "Ilim": 2 * 2 ** 0.5 * float(imm.p["I_rated"]),
+              "idRated": (2 / 3) ** 0.5 * imm.p["V"] / (2 * 3.141592653589793 * imm.p["f"] * Ls)}
+    pm_env = {"p": pmc["p"], "TL": float(pmm.p["TL"]), "Imax": float(pmm.p["Imax"]), "nBase": pmc["nBase"]}
+    realtime.render(realtime.editor_html(motors, pick, ctrl, bldc, im_env, pm_env), height=1180)
     with st.expander("블록 설명과 구성 팁", expanded=False):
         st.markdown("""
 - **신호원**: 상수(실행 중 값 변경 = 계단), 계단(지정 시각), 사각파(반복 계단), 사인파. "rpm 으로 입력"을 켜면 rad/s 로 바꿔 내보냅니다.
 - **합산점 Σ**: 부호 문자열로 입력 개수와 부호를 정합니다 (`+-` = 오차, `++` = 피드포워드 더하기).
 - **P / PI / PID**: 속성의 '종류'로 언제든 바꿀 수 있습니다. 출력 제한과 안티와인드업은 PI 의 적분기에 작동합니다.
 - **초퍼 → 전동기**: 초퍼는 전압을 ±Vdc (1상한은 0 ~ Vdc) 로 자르고, 1상한이면 전동기 전류도 한 방향만 흐릅니다.
+- **유도전동기**: '벡터' 입력이면 id*(자속분)·iq*(토크분) 전류를, 'V/f' 입력이면 주파수 f*·선간 전압 V* 를 넣습니다 (인버터 내장).
+- **PMSM**: id*·iq* 를 넣으면 내부 dq 전류 제어기가 따라갑니다. id* 를 음으로 주면 약계자, 속도 PI 출력과 MTPA 계산을 블록으로 조합해 볼 수 있습니다.
 - **BLDC 전동기**: 6스텝 인버터가 블록 안에 들어 있어 전압 지령 v* 를 바로 넣습니다. 피드백은 ω 와 토크 전류 iT (= Te/2ke),
   상전류 ia·ib·ic 는 스코프로 정류 모습을 볼 때 씁니다. 속성에서 홀 센서 오차를 바꿔 볼 수 있습니다.
 - **전동기 출력**: ω [rad/s], n [rpm], Ia [A], E [V], Te [N·m]. 피드백은 여기서 끌어옵니다. TL 입력을 이으면 그 신호가 부하 토크가 됩니다.

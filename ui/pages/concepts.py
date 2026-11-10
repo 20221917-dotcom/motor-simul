@@ -58,7 +58,7 @@ def em_basics():
                               key="em_b").startswith("→") else -1
         i_dir = 1 if st.radio("전류 I 방향", ["⊙ 지면에서 나옴", "⊗ 지면으로 들어감"],
                               horizontal=True, key="em_i").startswith("⊙") else -1
-        st.plotly_chart(_force_figure(b_dir, i_dir), use_container_width=True,
+        st.plotly_chart(_force_figure(b_dir, i_dir), width="stretch",
                         config={"staticPlot": True})
         st.caption("자계나 전류 중 하나만 뒤집으면 힘이 반대가 되고, 둘 다 뒤집으면 그대로입니다. "
                    "DC 전동기의 역회전은 그래서 **전기자 전압이나 계자 중 하나만** 뒤집습니다.")
@@ -144,7 +144,7 @@ def commutation():
     fig.add_trace(go.Scatter(x=x, y=i, name="코일 전류", line=dict(color="#e76f51", width=3)))
     fig.add_hline(y=-1, line=dict(color="#bbb", dash="dot"))
     style(fig, 360, xaxis_title="정류 진행 t / Tc", yaxis_title="코일 전류 i / I [p.u.]")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     # 브러시 접촉면의 전류 밀도 (직선 정류일 때 = 1). 끝쪽이 크면 부족 정류, 앞쪽이 크면 과정류.
     trail = float(np.mean(((1 + i) / (1 - x) / 2)[(x > 0.85) & (x < 0.97)]))
     lead = float(np.mean(((1 - i) / x / 2)[(x > 0.03) & (x < 0.15)]))
@@ -209,7 +209,7 @@ def magnetic():
     fig.add_trace(go.Scatter(x=x, y=satc, name="포화 고려 (근사)", line=dict(color="#264653", width=3)))
     fig.add_vline(x=If_r, line=dict(color="#e76f51", dash="dot"), annotation_text="정격 If")
     style(fig, 360, xaxis_title="계자 전류 If [A]", yaxis_title="Kφ [V·s/rad]")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     st.markdown(f"""
 - 정격점에서 선형 모델은 Kφ 를 **{sat * 100:.0f} %** 크게 봅니다. 그만큼 무부하 속도 V/Kφ 를 작게 예측합니다.
 - 정격보다 약한 계자(**계자 약화**)에서는 곡선이 거의 직선이라 선형 모델이 잘 맞습니다.
@@ -248,7 +248,7 @@ PI 제어기 Kp + Ki/s 의 영점 Ki/Kp 를 플랜트 극 Ra/La 에 맞추면 �
                              line=dict(color="#adb5bd", dash="dash")))
     fig.add_trace(go.Scatter(x=t * 1e3, y=y, name="실제 폐루프 응답", line=dict(color="#e76f51", width=3)))
     style(fig, 360, xaxis_title="시간 [ms]", yaxis_title="I / I* [p.u.]")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     k = st.columns(4)
     info_metric(k[0], "Kp", f"{Kp:.4g} V/A")
     info_metric(k[1], "Ki", f"{Ki:.4g} V/(A·s)")
@@ -285,7 +285,7 @@ def symbols():
         ("Ts", "제어 주기", "s"), ("I_lim", "전류 제한값", "A"),
     ]
     st.dataframe([{"기호": a, "의미": b, "단위": c} for a, b, c in rows], hide_index=True,
-                 use_container_width=True)
+                 width="stretch")
     st.markdown("#### 자주 쓰는 변환")
     st.latex(r"n\,[\text{rpm}] = \omega\,[\text{rad/s}]\times\frac{60}{2\pi}\approx 9.549\,\omega,"
              r"\qquad P = T\omega,\qquad 1\ \text{HP} = 746\ \text{W}")

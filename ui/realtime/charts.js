@@ -11,7 +11,8 @@
     }
     const ctx = cv.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    return [ctx, r.width, r.height];
+    // 숨겨진 탭 안에서는 크기가 0 이 되므로 그림 계산이 음수 반지름을 만들지 않도록 최소 크기로 계산
+    return [ctx, Math.max(r.width, 160), Math.max(r.height, 120)];
   }
 
   function niceStep(span, n) {

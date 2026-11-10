@@ -7,7 +7,7 @@ JS 엔진(engine.js)은 파이썬 모델과 같은 식이며 tests/test_js_engin
 import json
 import pathlib
 
-import streamlit.components.v1 as components
+import streamlit as st
 
 _DIR = pathlib.Path(__file__).parent
 
@@ -66,13 +66,18 @@ def control_html(params, kphi, Ts=1e-4):
 
 
 def render(html, height):
-    components.html(html, height=height, scrolling=False)
+    """HTML 위젯을 iframe 으로 표시 (같은 HTML 이면 다시 그려도 iframe 이 유지되어 시뮬레이션이 이어진다)."""
+    if hasattr(st, "iframe"):
+        st.iframe(html, height=height)
+    else:   # 구버전 Streamlit
+        import streamlit.components.v1 as components
+        components.html(html, height=height, scrolling=False)
 
 
-def editor_html(motors, default_motor, ctrl, bldc=None):
+def editor_html(motors, default_motor, ctrl, bldc=None, im=None, pmsm=None):
     """제어 블록 편집기. motors: DC 전동기 {이름: {type, sigma, p, V, Vf, Rfx}},
-    ctrl: DC 템플릿 게인 계산용, bldc: {p, TL, Ilim} (BLDC 블록·템플릿용)."""
-    cfg = {"motors": motors, "defaultMotor": default_motor, "ctrl": ctrl, "bldc": bldc}
+    ctrl: DC 템플릿 게인 계산용, bldc / im / pmsm: 각 전동기 블록·템플릿용 파라미터."""
+    cfg = {"motors": motors, "defaultMotor": default_motor, "ctrl": ctrl, "bldc": bldc, "im": im, "pmsm": pmsm}
     return _build("editor.html", cfg)
 
 

@@ -7,6 +7,7 @@ import streamlit as st
 
 from core.units import to_rpm
 from motors import registry
+import motors.bldc.model  # noqa: F401  (모델 등록 보장)
 from ui import realtime
 from ui.params_panel import render_params
 from ui.plots import info_metric, style, PALETTE
@@ -119,7 +120,7 @@ def tab_steady(m, params):
         style(fig, 400, xaxis_title="토크 [N·m]", yaxis_title="속도 [rpm]", hovermode="closest",
               title=dict(text="속도–토크 특성", x=0))
         fig.update_yaxes(range=[0, to_rpm(max(w)) * 1.1])
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     with c2:
         k = st.columns(2)
         info_metric(k[0], "속도 (평균 모델)", f"{op.rpm:.0f} rpm")
@@ -144,7 +145,7 @@ def tab_steady(m, params):
     fig.add_trace(go.Scatter(x=x, y=r["TL"], name="TL", line=dict(color=PALETTE["TL"], dash="dash")), 3, 1)
     style(fig, 620, side_legend=True)
     fig.update_xaxes(title_text="전기각 [°]", dtick=60, row=3, col=1)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     st.caption("60° 마다 통전 상이 바뀌고, 그때마다 꺼지는 상의 전류가 환류하며 줄어드는 동안 토크가 출렁입니다 (정류 리플).")
 
     # 부하 토크에 따른 전류·효율 (평균 모델)
@@ -159,7 +160,7 @@ def tab_steady(m, params):
         style(fig, 320, xaxis_title="부하 토크 [N·m]", title=dict(text="부하 토크에 따른 전류와 효율 (평균 모델)", x=0))
         fig.update_yaxes(title_text="전류 [A]", secondary_y=False)
         fig.update_yaxes(title_text="효율 [%]", range=[0, 100], tickmode="linear", dtick=20, showgrid=False, secondary_y=True)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
 
 def _steady_sim(m, params):
@@ -220,7 +221,7 @@ def tab_dynamic(m, params):
                                font=dict(size=11, color="#666"))
     style(fig, 900, side_legend=True)
     fig.update_xaxes(title_text="시간 [ms]", row=4, col=1)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     if d1 < 0:
         st.info("듀티를 음수로 바꾸면 통전 순서가 반대가 되어 제동 → 역회전합니다 (4상한 인버터).")
 

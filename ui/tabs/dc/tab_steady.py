@@ -161,8 +161,8 @@ def _compare_section(model, params):
           title=dict(text="속도–토크 곡선 비교 (◆ 운전점)", x=0.0))
     fig.update_yaxes(range=[0, to_rpm(y_top)])
     fig.update_xaxes(range=[0, 1.05 * max(t_all)])
-    st.plotly_chart(fig, use_container_width=True)
-    st.dataframe(rows, use_container_width=True, hide_index=True)
+    st.plotly_chart(fig, width="stretch")
+    st.dataframe(rows, width="stretch", hide_index=True)
     with st.expander("비교해서 볼 점"):
         st.markdown("""
 - **타여자·분권**: 거의 수평인 직선. 부하가 변해도 속도가 일정합니다 (속도 변동률 수 %).
@@ -227,12 +227,12 @@ def render(model, params):
 
     c1, c2 = st.columns([3, 2])
     with c1:
-        st.plotly_chart(_speed_torque(model, op, op_nl, u, params), use_container_width=True)
+        st.plotly_chart(_speed_torque(model, op, op_nl, u, params), width="stretch")
     with c2:
         if op:
-            st.plotly_chart(_power_flow(op), use_container_width=True)
+            st.plotly_chart(_power_flow(op), width="stretch")
     if op:
         _metrics(op, op_nl, model)
-    st.plotly_chart(_load_sweep(model, u, params), use_container_width=True)
+    st.plotly_chart(_load_sweep(model, u, params), width="stretch")
     st.divider()
     _compare_section(model, params)

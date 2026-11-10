@@ -64,13 +64,13 @@ def _settings(model, params):
     st.markdown("**프리셋**")
     p = st.columns(4)
     p[0].button("직입 기동", on_click=_preset, args=("direct", params, R0),
-                use_container_width=True)
+                width="stretch")
     p[1].button("기동 저항 사용", on_click=_preset, args=("rst", params, R0),
-                use_container_width=True)
+                width="stretch")
     p[2].button("전압 제어", on_click=_preset, args=("volt", params, R0),
-                use_container_width=True)
+                width="stretch")
     p[3].button("계자 약화", on_click=_preset, args=("field", params, R0),
-                use_container_width=True, disabled=not has_field_ctrl)
+                width="stretch", disabled=not has_field_ctrl)
     if not has_field_ctrl and ss.dy_change == "계자 변경":
         ss.dy_change = "없음"
 
@@ -202,8 +202,8 @@ def _compare(model, params, s, res_me):
     style(fig, 560, side_legend=True)
     mark_events(fig, res_me.events, rows=(1, 2))
     fig.update_xaxes(title_text="시간 [s]", row=2, col=1)
-    st.plotly_chart(fig, use_container_width=True)
-    st.dataframe(rows, use_container_width=True, hide_index=True)
+    st.plotly_chart(fig, width="stretch")
+    st.dataframe(rows, width="stretch", hide_index=True)
     st.caption("직권은 기동 전류가 작아도 토크가 커서(T ∝ Ia²) 빨리 가속하고, "
                "무부하 구간의 속도가 높습니다. 같은 기동 저항 설정은 모든 방식에 똑같이 적용됩니다.")
 
@@ -215,6 +215,6 @@ def render(model, params):
     s = _settings(model, params)
     res = _run(model.key, tuple(sorted(params.items())), s)
     _summary(res, s, params)
-    st.plotly_chart(_plot(res, params, model), use_container_width=True)
+    st.plotly_chart(_plot(res, params, model), width="stretch")
     st.divider()
     _compare(model, params, s, res)

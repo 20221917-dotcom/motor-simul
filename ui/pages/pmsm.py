@@ -8,6 +8,7 @@ import streamlit as st
 from core.simulate import simulate, Event
 from core.units import to_rpm, to_rad_s
 from motors import registry
+import motors.ac.pmsm  # noqa: F401  (모델 등록 보장)
 from ui import realtime
 from ui.params_panel import render_params
 from ui.plots import info_metric, style, mark_events, PALETTE
@@ -113,7 +114,7 @@ def tab_steady(m, params):
     fig.add_vline(x=-ich, line=dict(color="#999", dash="dash"), annotation_text="−λf/Ld (타원 중심)")
     style(fig, 520, xaxis_title="d축 전류 id [A]", yaxis_title="q축 전류 iq [A]", hovermode="closest")
     fig.update_xaxes(range=[g[0], g[-1]]); fig.update_yaxes(range=[0, h[-1]], scaleanchor="x")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     st.caption("속도가 오르면 전압 한계 타원이 −λf/Ld 쪽으로 줄어듭니다. 운전점이 타원 밖이면 그 속도에서 낼 수 없으므로 "
                "id 를 음으로 보내(약계자) 타원 안으로 들어갑니다. 매입형(Lq > Ld)은 id < 0 에서 릴럭턴스 토크가 더해져 MTPA 가 d축 음의 방향으로 휩니다.")
 
@@ -129,7 +130,7 @@ def tab_steady(m, params):
     style(fig, 360, xaxis_title="속도 [rpm]", hovermode="closest")
     fig.update_yaxes(title_text="토크 [N·m]", secondary_y=False)
     fig.update_yaxes(title_text="출력 [kW]", showgrid=False, secondary_y=True)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     nz = ns[np.argmax(Tm <= 1e-9)] if np.any(Tm <= 1e-9) else None
     st.caption("기저 속도까지는 최대 전류로 낼 수 있는 토크가 일정합니다 (정토크 영역). 그 위는 약계자 영역입니다. "
                + (f"이 전동기는 특성 전류 λf/Ld = {ich:.1f} A 가 I_max = {Imax:.0f} A 보다 커서 자석 자속을 다 상쇄하지 못하므로 "
@@ -200,7 +201,7 @@ def tab_grid(m, params):
     style(fig, 900, side_legend=True)
     mark_events(fig, [e for e in r.events if e.label], rows=range(1, 5))
     fig.update_xaxes(title_text="시간 [s]", row=4, col=1)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     st.markdown("""
 - **제동 권선이 없으면(Kd = 0)** 동기 운전 중 작은 흔들림이 점점 커지는 **난조**가 생기고, 정지 상태에서 직결하면 토크가 반 주기마다
   방향을 바꿔 평균 0 이라 **기동하지 못합니다**. 그래서 보통 PMSM 은 **인버터로 주파수를 0 부터 올리며** 기동합니다.

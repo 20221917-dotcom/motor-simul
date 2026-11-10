@@ -9,6 +9,7 @@ import streamlit as st
 from core.simulate import simulate, Event
 from core.units import to_rpm
 from motors import registry
+import motors.ac.induction  # noqa: F401  (모델 등록 보장)
 from ui import realtime
 from ui.params_panel import render_params
 from ui.plots import info_metric, style, mark_events, PALETTE
@@ -96,7 +97,7 @@ def tab_steady(m, params):
         style(fig, 430, xaxis_title="속도 [rpm]", hovermode="closest", title=dict(text="토크–속도 특성 (슬립 −0.6 ~ 1.6)", x=0))
         fig.update_yaxes(title_text="토크 [N·m]", secondary_y=False)
         fig.update_yaxes(title_text="전류 [A]", showgrid=False, secondary_y=True)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     with c2:
         k = st.columns(2)
         if op:
@@ -122,7 +123,7 @@ def tab_steady(m, params):
         for name, v, col in items:
             fig.add_trace(go.Bar(y=["출력 + 손실"], x=[v], orientation="h", name=name, marker_color=col, text=[f"{v:.0f} W"], textposition="inside"))
         style(fig, 220, barmode="stack", xaxis_title="전력 [W]", hovermode="closest")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
         st.caption(f"공극 전력 Pag = {Pag:.0f} W 중 s·Pag 는 회전자 동손, (1 − s)·Pag 는 기계 출력이 됩니다 (철손 무시).")
 
     st.markdown("#### V/f 제어: 주파수에 따른 토크–속도 곡선")
@@ -142,7 +143,7 @@ def tab_steady(m, params):
             fig.add_trace(go.Scatter(x=n, y=T, name=f"{f:.0f} Hz, {V:.0f} V", line=dict(color=cols[i], width=2.5)))
         fig.add_hline(y=u.TL, line=dict(color=PALETTE["TL"], dash="dash"), annotation_text="부하 토크")
         style(fig, 380, xaxis_title="속도 [rpm]", yaxis_title="토크 [N·m]", hovermode="closest")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     st.markdown("#### 회전자 저항의 영향 (권선형 유도전동기의 2차 저항 제어)")
     fig = go.Figure()
@@ -151,7 +152,7 @@ def tab_steady(m, params):
         s, n, T, _ = _tn_curve(mm, u, 0.001, 1.0, 300)
         fig.add_trace(go.Scatter(x=n, y=T, name=f"Rr′ × {k_}", line=dict(color=col, width=2.5)))
     style(fig, 330, xaxis_title="속도 [rpm]", yaxis_title="토크 [N·m]", hovermode="closest")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     st.caption("회전자 저항을 키우면 최대 토크는 그대로이고 최대 토크가 나는 슬립이 커집니다 → 기동 토크가 커지고 기동 전류는 줄어듭니다.")
 
 
@@ -177,9 +178,9 @@ def tab_dynamic(m, params):
     for k, v in {"ims_start": "직입 기동", "ims_chg": False}.items():
         ss.setdefault(k, v)
     p = st.columns(3)
-    p[0].button("직입 기동", on_click=_preset, args=("direct",), use_container_width=True)
-    p[1].button("Y-Δ 기동 (감전압)", on_click=_preset, args=("yd",), use_container_width=True)
-    p[2].button("운전 중 주파수 변경 (V/f)", on_click=_preset, args=("freq",), use_container_width=True)
+    p[0].button("직입 기동", on_click=_preset, args=("direct",), width="stretch")
+    p[1].button("Y-Δ 기동 (감전압)", on_click=_preset, args=("yd",), width="stretch")
+    p[2].button("운전 중 주파수 변경 (V/f)", on_click=_preset, args=("freq",), width="stretch")
     c = st.columns(4)
     t_end = c[0].number_input("시뮬레이션 시간 [s]", 0.2, 10.0, 2.0, 0.1, key="ims_tend")
     start = c[0].radio("기동 방식", ["직입 기동", "Y-Δ 기동"], key="ims_start",
@@ -222,7 +223,7 @@ def tab_dynamic(m, params):
     style(fig, 950, side_legend=True)
     mark_events(fig, r.events, rows=range(1, 5))
     fig.update_xaxes(title_text="시간 [s]", row=4, col=1)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     st.caption("직입 기동 초기에는 전류에 직류 성분이 섞여 비대칭이고, 토크도 크게 진동합니다 (전기적 과도 현상).")
 
 

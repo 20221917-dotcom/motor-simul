@@ -122,3 +122,53 @@ def test_bldc_templates_run():
 const dg = new B.Diagram(); B.templates(env)[{json.dumps(n)}](dg);
 console.log(JSON.stringify(runB(dg, 0.1)));""")
         assert r["msgs"] == [], (n, r["msgs"])
+
+
+AC_PRELUDE = f"""
+global.ACEngine = require({json.dumps(str(RT / 'ac_engine.js'))});
+"""
+AC_ENV = """
+const ip = { V: 380, f: 60, Rs: 0.5, Rr: 0.4, Lls: 3.2e-3, Llr: 3.2e-3, Lm: 0.106, poles: 4, J: 0.1, B: 0.002 };
+env.im = { p: ip, TL: 30, Ilim: 36.8, idRated: ACEngine.imIdRated(ip) };
+env.pmsm = { p: { Vdc: 300, Rs: 0.5, Ld: 5e-3, Lq: 8e-3, lam: 0.15, poles: 8, J: 2e-3, B: 1e-4 }, TL: 5, Imax: 15, nBase: 2277 };
+function runAC(name, T) {
+  const dg = new B.Diagram(); B.templates(env)[name](dg);
+  const r = new B.Runner(dg, env); const mo = dg.blocks.find(b => b.type === 'im' || b.type === 'pmsm');
+  const rec = [];
+  for (let k = 0; k < Math.round(T / 0.01); k++) { r.advance(0.01, 1e-4); rec.push([r.t, r.out[mo.id][1], r.out[mo.id][2]]); }
+  return { rec, msgs: r.check() };
+}
+"""
+
+
+def ac_js(body):
+    out = subprocess.run([node, "-e", BLDC_PRELUDE + AC_PRELUDE + PRELUDE + AC_ENV + body], capture_output=True,
+                         text=True, check=True, timeout=180)
+    return json.loads(out.stdout)
+
+
+def _at(rec, t):
+    return min(rec, key=lambda r: abs(r[0] - t))
+
+
+def test_im_vector_template_holds_speed_under_load():
+    r = ac_js('console.log(JSON.stringify(runAC("유도전동기: 벡터 제어 (속도 PI → iq*)", 2.5)));')
+    assert r["msgs"] == []
+    t, rpm, Te = _at(r["rec"], 2.5)
+    assert rpm == pytest.approx(1440, abs=2) and Te == pytest.approx(30.3, rel=0.02)
+
+
+def test_im_vf_template_tracks_with_slip():
+    r = ac_js('console.log(JSON.stringify(runAC("유도전동기: V/f 제어 (속도 지령 → 주파수·전압)", 3.0)));')
+    assert r["msgs"] == []
+    _, rpm_hi, _ = _at(r["rec"], 0.95)     # 지령 1530 rpm, 무부하
+    _, rpm_lo, _ = _at(r["rec"], 1.95)     # 지령 630 rpm, 부하 30 N·m → 슬립만큼 처짐
+    assert rpm_hi == pytest.approx(1530, abs=10)
+    assert 560 < rpm_lo < 630
+
+
+def test_pmsm_template_tracks_square_reference():
+    r = ac_js('console.log(JSON.stringify(runAC("PMSM: 벡터 제어 (id = 0, 속도 PI → iq*)", 1.2)));')
+    assert r["msgs"] == []
+    assert _at(r["rec"], 0.28)[1] == pytest.approx(2050, abs=15)
+    assert _at(r["rec"], 0.58)[1] == pytest.approx(228, abs=15)
