@@ -1,0 +1,119 @@
+"""회로 시뮬레이터 엔진(circuit_engine.js) 검증: 해석해와 비교."""
+import json
+import math
+import pathlib
+import shutil
+import subprocess
+
+import pytest
+
+RT = pathlib.Path(__file__).resolve().parents[1] / "ui" / "realtime"
+node = shutil.which("node")
+pytestmark = pytest.mark.skipif(node is None, reason="Node.js 없음")
+
+PRELUDE = f"""
+const C = require({json.dumps(str(RT / 'circuit_engine.js'))});
+const by = (sc, t) => sc.elems.filter((e) => e.type === t);
+function tpl(name, f) {{ const sc = new C.Schematic(); C.TEMPLATES[name](sc); if (f) f(sc); return [sc, new C.Sim(sc)]; }}
+function run(s, T, h) {{ const n = Math.round(T / h); for (let k = 0; k < n; k++) s.step(h); }}
+"""
+
+
+def js(body):
+    out = subprocess.run([node, "-e", PRELUDE + body], capture_output=True, text=True, check=True, timeout=180)
+    return json.loads(out.stdout)
+
+
+def test_all_templates_solve_without_error():
+    r = js("""const res = {};
+for (const name of Object.keys(C.TEMPLATES)) {
+  const [sc, s] = tpl(name, (sc) => by(sc, "switch").forEach((e) => (e.p.on = true)));
+  run(s, 0.02, 1e-5);
+  res[name] = { err: s.err, finite: Object.values(s.I).every(Number.isFinite) };
+}
+console.log(JSON.stringify(res));""")
+    for name, v in r.items():
+        assert v["err"] == "" and v["finite"], name
+
+
+def test_rl_rise_matches_exponential_and_freewheel_diode_takes_over():
+    r = js("""const [sc, s] = tpl("RL 회로: 스위치를 닫으면 전류가 서서히 오름"); by(sc, "switch")[0].p.on = true;
+run(s, 0.05, 1e-5); const i1 = s.I[by(sc, "ammeter")[0].id];
+by(sc, "switch")[0].p.on = false; run(s, 0.01, 1e-5);
+console.log(JSON.stringify({ i1, d: s.I[by(sc, "diode")[0].id], L: s.I[by(sc, "inductor")[0].id], a: s.I[by(sc, "ammeter")[0].id] }));""")
+    assert r["i1"] == pytest.approx(1.2 * (1 - math.exp(-1)), rel=2e-3)      # τ = L/R = 0.05 s
+    assert r["d"] == pytest.approx(r["L"], rel=1e-6) and r["d"] > 0.6          # 인덕터 전류가 다이오드로 돎
+    assert abs(r["a"]) < 1e-6                                                  # 열린 스위치 쪽은 0
+
+
+def test_rc_charge_and_divider_and_parallel_lamps():
+    r = js("""let [sc, s] = tpl("RC 회로: 충전과 방전"); run(s, 0.1, 1e-5); const vc = s.volt(by(sc, "capacitor")[0].id);
+[sc, s] = tpl("직렬 회로: 전압이 나뉨 (전압 분배)"); run(s, 1e-3, 1e-4);
+const div = { I: s.I[by(sc, "ammeter")[0].id], V: s.volt(by(sc, "voltmeter")[0].id) };
+[sc, s] = tpl("병렬 회로: 전구마다 전류가 나뉨"); run(s, 1e-3, 1e-4);
+const par = { I: s.I[by(sc, "ammeter")[0].id], lamps: by(sc, "lamp").map((e) => s.I[e.id]), src: s.I[by(sc, "vdc")[0].id], vs: s.volt(by(sc, "vdc")[0].id) };
+console.log(JSON.stringify({ vc, div, par }));""")
+    assert r["vc"] == pytest.approx(10 * (1 - math.exp(-1)), rel=2e-3)        # τ = RC = 0.1 s
+    assert r["div"]["I"] == pytest.approx(12 / 600, rel=1e-6) and r["div"]["V"] == pytest.approx(4, rel=1e-6)
+    lamps = [5 / 12, 10 / 12, 12 / (12 ** 2 / 20 + 0.001)]                    # 세 번째 전구는 닫힌 스위치(1 mΩ)와 직렬
+    assert r["par"]["lamps"] == pytest.approx(lamps, rel=1e-6)
+    assert r["par"]["I"] == pytest.approx(sum(lamps), rel=1e-6)
+    assert r["par"]["src"] == pytest.approx(sum(lamps), rel=1e-6) and r["par"]["vs"] == pytest.approx(12)   # 전원은 내보내는 쪽이 +
+
+
+def test_rlc_resonance_current_amplitude():
+    r = js("""const [sc, s] = tpl("RLC 직렬 공진 (교류)"); const ac = by(sc, "vac")[0];
+ac.p.f = 1 / (2 * Math.PI * Math.sqrt(0.01 * 100e-6)); run(s, 0.3, 2e-6);
+let mx = 0; for (let k = 0; k < 5000; k++) { s.step(2e-6); mx = Math.max(mx, Math.abs(s.I[by(sc, "ammeter")[0].id])); }
+console.log(JSON.stringify({ mx }));""")
+    assert r["mx"] == pytest.approx(10 / 10, rel=0.02)                         # 공진: |Z| = R
+
+
+def test_half_wave_rectifier_peak():
+    r = js("""const [sc, s] = tpl("반파 정류: 다이오드 1개"); let mx = 0, mn = 1e9;
+for (let k = 0; k < 4000; k++) { s.step(1e-5); const v = s.volt(by(sc, "voltmeter")[0].id); mx = Math.max(mx, v); mn = Math.min(mn, v); }
+console.log(JSON.stringify({ mx, mn }));""")
+    assert r["mx"] == pytest.approx((10 - 0.7) * 100 / 100.01, rel=5e-3)
+    assert r["mn"] > -1e-3                                                     # 역방향은 막힘
+
+
+def test_dc_motor_steady_state_matches_equations():
+    r = js("""const [sc, s] = tpl("DC 전동기 기동: 기동 저항으로 돌입 전류 줄이기", (sc) => by(sc, "switch")[0].p.on = true);
+let peak = 0; for (let k = 0; k < 2000; k++) { s.step(1e-4); peak = Math.max(peak, s.I[by(sc, "ammeter")[0].id]); }
+run(s, 20, 1e-4); const m = by(sc, "motor")[0];
+console.log(JSON.stringify({ peak, w: s.st[m.id].w, i: s.I[m.id] }));""")
+    K, Ra, Rst, B, TL, V = 1.8, 0.5, 5, 0.005, 30, 220
+    w = (K * V - (Ra + Rst) * TL) / ((Ra + Rst) * B + K * K)
+    assert r["w"] == pytest.approx(w, rel=1e-3)
+    assert r["i"] == pytest.approx((B * w + TL) / K, rel=1e-3)
+    assert r["peak"] < V / (Ra + Rst)                                          # 기동 저항이 돌입 전류를 제한
+
+
+def test_buck_chopper_average_voltage_sets_speed():
+    r = js("""const [sc, s] = tpl("강압 초퍼: PWM 으로 DC 전동기 속도 바꾸기"); run(s, 15, 1e-5);
+const m = by(sc, "motor")[0]; console.log(JSON.stringify({ w: s.st[m.id].w }));""")
+    K, Ra, B, TL, V, D = 1.8, 0.5, 0.005, 20, 220, 0.5
+    w = (K * (D * V - 0.7 * (1 - D)) - Ra * TL) / (Ra * B + K * K)           # 평균 전압 D·V (다이오드 강하 보정)
+    assert r["w"] == pytest.approx(w, rel=0.02)
+
+
+def test_wire_currents_follow_kcl_at_tee_and_parallel_wires():
+    r = js("""const sc = new C.Schematic();
+sc.add("vdc", 0, 4, 3, { V: 10 }); sc.wire(0, 0, 8, 0);
+sc.add("resistor", 4, 0, 1, { R: 10 }); sc.add("resistor", 8, 0, 1, { R: 10 });
+sc.wire(0, 4, 8, 4); sc.wire(0, 4, 8, 4);     // 같은 자리에 겹친 전선 두 가닥 (병렬)
+sc.add("ground", 0, 4);
+const s = new C.Sim(sc); s.step(1e-4); const wc = s.wireCurrents();
+const seg = s.net.segs.map((g, k) => ({ a: s.net.P[g.a], b: s.net.P[g.b], i: wc[k] }));
+console.log(JSON.stringify(seg));""")
+    top = {(tuple(x["a"]), tuple(x["b"])): x["i"] for x in r if x["a"][1] == 0}
+    assert top[((0, 0), (4, 0))] == pytest.approx(2.0, rel=1e-6)              # 전원 → 첫 갈래 앞: 두 저항 전류 합
+    assert top[((4, 0), (8, 0))] == pytest.approx(1.0, rel=1e-6)
+    bottom = [x["i"] for x in r if x["a"][1] == 4 and x["a"][0] == 0 and x["b"][0] == 4]
+    assert len(bottom) == 2 and sum(bottom) == pytest.approx(-2.0, rel=1e-6)  # 귀로 전류가 두 가닥에 나뉨
+
+
+def test_short_circuit_reports_error():
+    r = js("""const sc = new C.Schematic(); sc.add("vdc", 0, 4, 3); sc.wire(0, 0, 0, 4);
+const s = new C.Sim(sc); s.step(1e-4); console.log(JSON.stringify({ err: s.err }));""")
+    assert "단락" in r["err"]

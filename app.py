@@ -1,6 +1,6 @@
 """전동기 학습용 시뮬레이터 — 실행: streamlit run app.py
 
-왼쪽 사이드바는 메뉴(직류 전동기 / BLDC 전동기 / 교류 전동기(유도·PMSM) / 전동기 구조 / 제어 실습)이고,
+왼쪽 사이드바는 메뉴(직류 전동기 / BLDC 전동기 / 교류 전동기(유도·PMSM) / 전동기 구조 / 제어 실습 / 회로 실습)이고,
 각 페이지의 파라미터 설정은 메인 화면 위쪽에 있다.
 새 전동기 페이지를 추가할 때는 ui/pages/ 에 render 함수를 만들고 아래 목록에 넣으면 된다.
 """
@@ -30,7 +30,7 @@ def _refresh_project_modules():
 
 _refresh_project_modules()
 
-from ui.pages import bldc, dc_blocks, dc_sim, induction, pmsm, structure
+from ui.pages import bldc, circuit, dc_blocks, dc_sim, induction, pmsm, structure
 
 st.set_page_config(page_title="전동기 학습 시뮬레이터", page_icon="⚙️", layout="wide")
 
@@ -53,6 +53,9 @@ pages = {
     ],
     "제어 실습": [
         st.Page(dc_blocks.render, title="제어 블록 편집기 (DC·BLDC·교류)", icon="🧩", url_path="blocks"),
+    ],
+    "회로 실습": [
+        st.Page(circuit.render, title="회로 시뮬레이터 (전류 흐름)", icon="🔌", url_path="circuit"),
     ],
 }
 st.navigation(pages, position="sidebar", expanded=True).run()

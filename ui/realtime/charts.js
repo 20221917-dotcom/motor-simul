@@ -75,7 +75,9 @@
       ctx.textAlign = "center"; ctx.textBaseline = "top";
       for (let t = Math.ceil(t0 / xs) * xs; t <= t1; t += xs) {
         ctx.beginPath(); ctx.moveTo(X(t), T); ctx.lineTo(X(t), T + ph); ctx.stroke();
-        ctx.fillText(t.toFixed(xs < 0.1 ? 2 : 1) + " s", X(t), T + ph + 3);
+        // 눈금 간격에 맞춰 자릿수를 정하고, 0.1 s 보다 짧은 화면은 ms 로 표시
+        const ms = t1 - t0 < 0.1, st = ms ? xs * 1000 : xs, dg = Math.max(0, Math.ceil(-Math.log10(st) - 1e-9));
+        ctx.fillText(ms ? (t * 1000).toFixed(dg) + " ms" : t.toFixed(Math.max(dg, xs < 1 ? 1 : 0)) + " s", X(t), T + ph + 3);
       }
       ctx.strokeStyle = "#bbb"; ctx.beginPath(); ctx.moveTo(L, Y(0)); ctx.lineTo(W - R, Y(0)); ctx.stroke();
       // 기준선 (전류 제한 등)

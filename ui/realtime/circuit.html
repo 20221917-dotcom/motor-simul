@@ -1,0 +1,629 @@
+<!doctype html><html><head><meta charset="utf-8"><style>/*CSS*/
+.tb { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 4px 0 8px; font-size: 13px; }
+.tb select, .tb button { font-size: 13px; }
+.tb select { padding: 4px 6px; border: 1px solid #ccc; border-radius: 6px; }
+.tb label { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.sep { width: 1px; height: 24px; background: #ddd; }
+.main { display: grid; grid-template-columns: 150px 1fr; gap: 8px; }
+.lower { display: grid; grid-template-columns: 310px 1fr; gap: 12px; align-items: start; margin-top: 8px; }
+.pal { display: flex; flex-direction: column; gap: 4px; max-height: 540px; overflow-y: auto; }
+.pal h5 { margin: 6px 0 2px; font-size: 12px; color: #666; }
+.pal button { text-align: left; padding: 5px 8px; font-size: 12.5px; background: #f7f9fc; }
+.cvwrap { position: relative; border: 1px solid #ddd; border-radius: 10px; overflow: auto; height: 540px; background:
+  radial-gradient(circle, #dcdcdc 1px, transparent 1px) 0 0 / 20px 20px; }
+svg { display: block; user-select: none; touch-action: none; }
+.zoom { position: sticky; float: right; top: 6px; right: 6px; display: flex; gap: 4px; z-index: 2; margin: 6px; }
+.zoom button { padding: 2px 9px; background: rgba(255,255,255,0.9); }
+.props { border: 1px solid #ddd; border-radius: 10px; padding: 10px; font-size: 13px; max-height: 700px; overflow-y: auto; }
+.props h4 { margin: 0 0 4px; } .props .d { color: #555; font-size: 12px; margin: 4px 0 8px; line-height: 1.45; }
+.props .f { margin: 6px 0; } .props .f label { display: block; color: #555; margin-bottom: 2px; }
+.props input[type=number] { width: 100%; padding: 4px 6px; border: 1px solid #ccc; border-radius: 6px; }
+.props .btns { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
+.props .btns button { padding: 3px 8px; font-size: 12px; }
+.props table { border-collapse: collapse; width: 100%; margin: 6px 0; font-variant-numeric: tabular-nums; }
+.props td { padding: 2px 4px; border-bottom: 1px solid #f0f0f0; } .props td:last-child { text-align: right; font-weight: 600; }
+.status { font-size: 12.5px; color: #444; padding: 6px 2px; min-height: 22px; }
+.status .w { color: #b45309; } .status .e { color: #c0262d; font-weight: 600; }
+.scopes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; }
+.scopes .sc { position: relative; } .scopes .sc button { position: absolute; right: 4px; top: 0; padding: 0 6px; font-size: 12px; }
+.scopes canvas { height: 180px; }
+@media (max-width: 900px) { .main, .lower { grid-template-columns: 1fr; } .scopes { grid-template-columns: 1fr; } }
+.el .hit { fill: transparent; cursor: move; }
+.el .sym { fill: none; stroke: #333; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.el.sel .sym { stroke: #d9534f; }
+.el.sel .hit { fill: rgba(217,83,79,0.07); }
+.wire { fill: none; stroke-width: 3; stroke-linecap: round; }
+.wire.sel { stroke-width: 5; filter: drop-shadow(0 0 2px #d9534f); }
+.whit { fill: none; stroke: transparent; stroke-width: 12; cursor: pointer; }
+.lab { font: 11.5px system-ui, sans-serif; fill: #333; pointer-events: none; }
+.lab.cur { fill: #b45309; font-weight: 600; }
+.lab.big { font: bold 14px system-ui, sans-serif; }
+.dot { fill: #f59e0b; pointer-events: none; }
+.tip { position: absolute; pointer-events: none; background: rgba(30,30,30,0.88); color: #fff; font-size: 12px; padding: 5px 8px;
+  border-radius: 6px; white-space: pre; display: none; z-index: 5; }
+.help { font-size: 12px; color: #555; line-height: 1.5; border: 1px solid #eee; border-radius: 8px; padding: 6px 10px; margin-top: 8px; }
+</style></head><body>
+<div class="tb">
+  <select id="tpl"></select><button id="loadTpl">예제 회로 불러오기</button>
+  <span class="sep"></span>
+  <button id="run" class="primary">⏸ 일시정지</button>
+  <button id="reset" class="primary">⟲ 처음부터 다시</button>
+  <label>재생 속도 <select id="spd"><option value="0.0001">1/10000</option><option value="0.001">1/1000</option><option value="0.01">1/100</option>
+    <option value="0.1">1/10</option><option value="0.25" selected>1/4</option><option value="1">실시간</option></select></label>
+  <label>그래프 폭 <select id="win"><option value="0.01">10 ms</option><option value="0.02">20 ms</option><option value="0.05">50 ms</option>
+    <option value="0.1">0.1 s</option><option value="0.2">0.2 s</option><option value="0.5">0.5 s</option><option value="1" selected>1 s</option>
+    <option value="2">2 s</option><option value="5">5 s</option><option value="10">10 s</option></select></label>
+  <label>계산 간격 <select id="ts"><option value="1e-6">1 µs</option><option value="5e-6">5 µs</option><option value="1e-5">10 µs</option>
+    <option value="5e-5">50 µs</option><option value="1e-4" selected>100 µs</option><option value="5e-4">0.5 ms</option></select></label>
+</div>
+<div class="tb">
+  <label class="chk"><input type="checkbox" id="showDots" checked> 전류 흐름 (움직이는 점)</label>
+  <label class="chk"><input type="checkbox" id="showCur" checked> 전류 값 표시</label>
+  <label class="chk"><input type="checkbox" id="showVolt" checked> 전압 색 (초록 + / 빨강 −)</label>
+  <span class="sep"></span>
+  <button id="rot">↻ 회전 (R)</button><button id="del">선택 삭제 (Del)</button><button id="clear">모두 지우기</button>
+  <button id="exp">내보내기/가져오기</button>
+</div>
+<div class="main">
+  <div class="pal" id="pal"></div>
+  <div class="cvwrap" id="wrap">
+    <div class="zoom"><button id="zout" title="축소">－</button><button id="zin" title="확대">＋</button><button id="zfit">화면 맞춤</button></div>
+    <svg id="cv"><g id="root"><g id="gw"></g><g id="ge"></g><g id="gd"></g><g id="gl"></g><g id="gp"></g>
+      <path id="tmp" class="wire" style="stroke:#d9534f; stroke-dasharray:6 5; display:none"/></g></svg>
+    <div class="tip" id="tip"></div>
+  </div>
+</div>
+<div class="status" id="status"></div>
+<div class="lower">
+  <div><div class="props" id="props"></div>
+    <div class="help"><b>사용법</b><br>
+      • 왼쪽 부품을 <b>클릭</b>하거나 회로도로 <b>끌어다</b> 놓습니다.<br>
+      • 빈 곳에서 <b>끌면 전선</b>이 그려집니다 (가로·세로로 꺾임). 전선 끝이 단자나 다른 전선 위에 닿으면 연결됩니다.<br>
+      • 부품을 끌어 옮기고, 선택 후 <b>R</b> 로 회전, <b>Del</b> 로 삭제합니다.<br>
+      • 스위치는 <b>클릭</b>하면 열고 닫힙니다 (실행 중에도).<br>
+      • 부품을 선택하면 값을 바꿀 수 있고, 바꾸는 즉시 계산에 반영됩니다. [전류 그래프] 로 시간 파형을 봅니다.<br>
+      • 점이 움직이는 방향 = 전류 방향, 빠를수록 큰 전류. 빨간 동그라미는 연결되지 않은 단자입니다.</div></div>
+  <div><div class="readout" id="ro"></div><div class="scopes" id="scopes"></div></div>
+</div>
+<dialog id="dlg"><b>회로 JSON</b> — 복사해서 저장하거나, 붙여 넣고 [가져오기] 를 누르세요.
+  <textarea id="json" style="width:100%; height:300px; font-family:monospace; font-size:12px"></textarea>
+  <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:6px"><button id="imp" class="primary">가져오기</button><button id="close">닫기</button></div></dialog>
+<script>/*CHARTS*/</script>
+<script>/*CIRCUIT*/</script>
+<script>
+const CFG = /*CONFIG*/;
+const $ = (id) => document.getElementById(id);
+const NS = "http://www.w3.org/2000/svg";
+const { DEF, Schematic, Sim, terminals, TEMPLATES, SPAN } = Circuit;
+const G = 20, L = SPAN * G;
+const sc = new Schematic();
+const sim = new Sim(sc);
+const STORE = "circuit-sim-v1";
+let sel = null, zoom = 1;
+let acc = 0, last = performance.now(), nextSample = 0, lastUi = 0, lagging = false, Iref = 1e-3, Vref = 1;
+
+// 예제마다 알맞은 재생 속도·그래프 폭·계산 간격과 처음에 띄울 그래프
+const TPL_SET = {
+  "RL 회로: 스위치를 닫으면 전류가 서서히 오름": { spd: 0.1, win: 0.5, h: 1e-5, scopes: [["ammeter", "I"], ["inductor", "V"]] },
+  "RC 회로: 충전과 방전": { spd: 0.25, win: 1, h: 1e-4, scopes: [["capacitor", "V"], ["capacitor", "I"]] },
+  "직렬 회로: 전압이 나뉨 (전압 분배)": { spd: 1, win: 1, h: 1e-4, scopes: [] },
+  "병렬 회로: 전구마다 전류가 나뉨": { spd: 1, win: 1, h: 1e-4, scopes: [["ammeter", "I"]] },
+  "RLC 직렬 공진 (교류)": { spd: 0.01, win: 0.05, h: 1e-5, scopes: [["ammeter", "I"], ["voltmeter", "V"]] },
+  "반파 정류: 다이오드 1개": { spd: 0.01, win: 0.05, h: 1e-5, scopes: [["vac", "V"], ["voltmeter", "V"]] },
+  "전파 정류: 다이오드 브리지 + 평활 커패시터": { spd: 0.01, win: 0.05, h: 1e-5, scopes: [["vac", "V"], ["resistor", "V"]] },
+  "DC 전동기 기동: 기동 저항으로 돌입 전류 줄이기": { spd: 0.25, win: 2, h: 1e-4, scopes: [["ammeter", "I"], ["motor", "n"]] },
+  "강압 초퍼: PWM 으로 DC 전동기 속도 바꾸기": { spd: 0.01, win: 0.02, h: 5e-6, scopes: [["motor", "I"], ["motor", "V"]] },
+};
+
+// ---------------- 숫자 표시 ----------------
+function si(v, unit) {
+  if (!isFinite(v)) return "—";
+  const a = Math.abs(v);
+  const P = [[1e9, "G"], [1e6, "M"], [1e3, "k"], [1, ""], [1e-3, "m"], [1e-6, "µ"], [1e-9, "n"]];
+  if (a < 1e-12) return "0 " + unit;
+  for (const [m, s] of P) if (a >= m * 0.9995) return (+(v / m).toPrecision(3)) + " " + s + unit;
+  return (+(v / 1e-12).toPrecision(3)) + " p" + unit;
+}
+const paramText = (e) => {
+  const p = e.p;
+  switch (e.type) {
+    case "resistor": return si(p.R, "Ω");
+    case "lamp": return `${p.Vr} V ${p.Pr} W`;
+    case "inductor": return si(p.L, "H");
+    case "capacitor": return si(p.C, "F");
+    case "vdc": return si(p.V, "V");
+    case "vac": return `${si(p.Vm, "V")} ${si(p.f, "Hz")}`;
+    case "idc": return si(p.I, "A");
+    case "pwm": return `${si(p.f, "Hz")} D=${(+p.D).toFixed(2)}`;
+    case "switch": return p.on ? "닫힘" : "열림";
+    default: return "";
+  }
+};
+
+// ---------------- 저장 ----------------
+function save() { try { localStorage.setItem(STORE, JSON.stringify(sc.toJSON())); } catch (e) {} }
+function loadSaved() { try { const s = localStorage.getItem(STORE); if (s) { sc.load(JSON.parse(s)); return sc.elems.length + sc.wires.length > 0; } } catch (e) {} return false; }
+
+// ---------------- 그리기 ----------------
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function symbol(e, g) {
+  const s = (tag, a) => el(tag, Object.assign({ class: "sym" }, a), g);
+  const lead = (x1, x2) => { s("line", { x1: 0, y1: 0, x2: x1, y2: 0 }); s("line", { x1: x2, y1: 0, x2: L, y2: 0 }); };
+  const refs = {};
+  switch (e.type) {
+    case "resistor": lead(20, 60); s("polyline", { points: "20,0 23,-8 29,8 35,-8 41,8 47,-8 53,8 57,-8 60,0" }); break;
+    case "lamp": lead(26, 54); refs.glow = el("circle", { cx: 40, cy: 0, r: 14, fill: "#fff", stroke: "#333", "stroke-width": 2 }, g);
+      s("line", { x1: 30, y1: -10, x2: 50, y2: 10 }); s("line", { x1: 30, y1: 10, x2: 50, y2: -10 }); break;
+    case "inductor": lead(20, 60); s("path", { d: "M20,0 a5,6 0 0,1 10,0 a5,6 0 0,1 10,0 a5,6 0 0,1 10,0 a5,6 0 0,1 10,0" }); break;
+    case "capacitor": lead(36, 44); s("line", { x1: 36, y1: -13, x2: 36, y2: 13 }); s("line", { x1: 44, y1: -13, x2: 44, y2: 13 }); break;
+    case "vdc": lead(36, 44); s("line", { x1: 36, y1: -7, x2: 36, y2: 7 }); s("line", { x1: 44, y1: -15, x2: 44, y2: 15 });
+      s("path", { d: "M54,-16 h8 M58,-20 v8", "stroke-width": 1.6 }); break;
+    case "vac": lead(24, 56); s("circle", { cx: 40, cy: 0, r: 16 }); s("path", { d: "M30,0 q5,-12 10,0 t10,0" });
+      s("path", { d: "M60,-18 h8 M64,-22 v8", "stroke-width": 1.6 }); break;
+    case "idc": lead(24, 56); s("circle", { cx: 40, cy: 0, r: 16 }); s("path", { d: "M30,0 h18 M42,-6 l6,6 l-6,6" }); break;
+    case "switch": case "pwm":
+      lead(22, 58); el("circle", { cx: 22, cy: 0, r: 3, fill: "#333" }, g); el("circle", { cx: 58, cy: 0, r: 3, fill: "#333" }, g);
+      refs.lever = s("line", { x1: 22, y1: 0, x2: 58, y2: 0 });
+      if (e.type === "pwm") s("rect", { x: 30, y: 10, width: 20, height: 9, rx: 2, "stroke-width": 1.2 });
+      break;
+    case "diode": lead(30, 50); s("path", { d: "M30,-11 L30,11 L50,0 Z", fill: "#333" }); s("line", { x1: 50, y1: -11, x2: 50, y2: 11 }); break;
+    case "motor": lead(22, 58); s("circle", { cx: 40, cy: 0, r: 18 }); s("path", { d: "M18,-6 h-4 v12 h4 M62,-6 h4 v12 h-4", "stroke-width": 1.5 }); break;
+    case "ammeter": case "voltmeter": lead(26, 54); s("circle", { cx: 40, cy: 0, r: 14 });
+      if (e.type === "voltmeter") s("path", { d: "M10,-14 h7 M13.5,-17.5 v7", "stroke-width": 1.5 });
+      else s("path", { d: "M58,-12 l6,0 M61,-15 l3,3 l-3,3", "stroke-width": 1.4 }); break;
+    case "ground": s("line", { x1: 0, y1: 0, x2: 0, y2: 12 }); s("line", { x1: -13, y1: 12, x2: 13, y2: 12 });
+      s("line", { x1: -8, y1: 17, x2: 8, y2: 17 }); s("line", { x1: -3, y1: 22, x2: 3, y2: 22 }); break;
+  }
+  if (DEF[e.type].one) el("rect", { class: "hit", x: -15, y: -4, width: 30, height: 30 }, g);
+  else el("rect", { class: "hit", x: 10, y: -20, width: 60, height: 40 }, g);
+  return refs;
+}
+
+let view = null;   // 그린 요소들 (매 프레임 갱신용)
+function render() {
+  const gw = $("gw"), ge = $("ge"), gd = $("gd"), gl = $("gl"), gp = $("gp");
+  [gw, ge, gd, gl, gp].forEach((g) => (g.innerHTML = ""));
+  if (sim.compiled !== sc.version) sim.compile();
+  const net = sim.net;
+  view = { wires: [], elems: [], paths: [] };
+  // 전선 토막
+  net.segs.forEach((s, k) => {
+    const A = net.P[s.a], B = net.P[s.b];
+    const ln = el("line", { class: "wire" + (sel === s.w ? " sel" : ""), x1: A[0] * G, y1: A[1] * G, x2: B[0] * G, y2: B[1] * G, stroke: "#6b7280" }, gw);
+    view.wires.push({ ln, node: net.node[s.a] });
+    view.paths.push({ x1: A[0] * G, y1: A[1] * G, x2: B[0] * G, y2: B[1] * G, cur: () => (sim.wc ? sim.wc[k] : 0) });
+  });
+  for (const w of sc.wires) {
+    const h = el("line", { class: "whit", x1: w.x1 * G, y1: w.y1 * G, x2: w.x2 * G, y2: w.y2 * G }, gw);
+    h.dataset.w = w.id;
+  }
+  // 부품
+  for (const e of sc.elems) {
+    const t = terminals(e).map((p) => [p[0] * G, p[1] * G]);
+    const g = el("g", { class: "el" + (sel === e.id ? " sel" : ""), transform: `translate(${t[0][0]},${t[0][1]}) rotate(${(e.rot || 0) * 90})` }, ge);
+    g.dataset.e = e.id;
+    const refs = symbol(e, g);
+    const v = { e, refs, t };
+    if (!DEF[e.type].one) {
+      const cx = (t[0][0] + t[1][0]) / 2, cy = (t[0][1] + t[1][1]) / 2, horiz = t[0][1] === t[1][1];
+      // 가로 부품은 위쪽에 두 줄, 세로 부품은 오른쪽에 두 줄 (값 / 전류)
+      const pos = (k) => (horiz ? { x: cx, y: cy - 34 + k * 14, "text-anchor": "middle" } : { x: cx + 24, y: cy - 3 + k * 15, "text-anchor": "start" });
+      v.l1 = el("text", Object.assign({ class: "lab" }, pos(0)), gl); v.l1.textContent = (e.name ? e.name + " " : "") + paramText(e);
+      v.l2 = el("text", Object.assign({ class: "lab cur" }, pos(1)), gl);
+      if (["motor", "ammeter", "voltmeter"].includes(e.type)) {
+        const tx = el("text", { class: "lab big", x: cx, y: cy + 5, "text-anchor": "middle" }, gl);
+        tx.textContent = { motor: "M", ammeter: "A", voltmeter: "V" }[e.type];
+      }
+      if (e.type === "motor") v.spoke = el("line", { x1: cx, y1: cy, x2: cx, y2: cy, stroke: "#2563eb", "stroke-width": 2.5, "stroke-linecap": "round" }, gl);
+      if (e.type !== "voltmeter") view.paths.push({ x1: t[0][0], y1: t[0][1], x2: t[1][0], y2: t[1][1], cur: () => sim.I[e.id] || 0, src: !!DEF[e.type].src });
+    }
+    view.elems.push(v);
+  }
+  // 점 (단자·접점·끊긴 단자)
+  const cnt = new Map();
+  for (const x of net.elems) { cnt.set(x.pa, (cnt.get(x.pa) || 0) + 1); if (x.pb !== undefined) cnt.set(x.pb, (cnt.get(x.pb) || 0) + 1); }
+  for (const e of sc.elems) if (e.type === "ground") { const i = net.pid(terminals(e)[0]); cnt.set(i, (cnt.get(i) || 0) + 1); }
+  for (const s of net.segs) { cnt.set(s.a, (cnt.get(s.a) || 0) + 1); cnt.set(s.b, (cnt.get(s.b) || 0) + 1); }
+  let loose = 0;
+  net.P.forEach((p, i) => {
+    const c = cnt.get(i) || 0;
+    if (c >= 3) el("circle", { cx: p[0] * G, cy: p[1] * G, r: 4.5, fill: "#333" }, gp);
+    else if (c === 1) { loose++; el("circle", { cx: p[0] * G, cy: p[1] * G, r: 5, fill: "#fff", stroke: "#d9534f", "stroke-width": 2 }, gp); }
+  });
+  view.loose = loose;
+  // 움직이는 점
+  for (const ph of view.paths) {
+    ph.len = Math.hypot(ph.x2 - ph.x1, ph.y2 - ph.y1); ph.phase = Math.random() * 16;
+    ph.dots = [];
+    for (let k = 0; k <= Math.floor(ph.len / 16); k++) ph.dots.push(el("circle", { class: "dot", r: 3, cx: -99, cy: -99 }, gd));
+  }
+  layoutSvg(false);
+  renderProps();
+  updateStatus();
+}
+function layoutSvg(fit) {
+  const pts = [...sc.elems.flatMap((e) => terminals(e)), ...sc.wires.flatMap((w) => [[w.x1, w.y1], [w.x2, w.y2]])];
+  const wr = $("wrap");
+  if (fit && pts.length) {
+    const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+    const w = (Math.max(...xs) - Math.min(0, ...xs) + 4) * G, h = (Math.max(...ys) - Math.min(0, ...ys) + 4) * G;
+    zoom = Math.max(0.5, Math.min(2.2, (wr.clientWidth - 20) / w, (wr.clientHeight - 20) / h));
+  }
+  const W = Math.max(...pts.map((p) => p[0]), 30) * G + 400, H = Math.max(...pts.map((p) => p[1]), 20) * G + 300;
+  const svg = $("cv");
+  svg.setAttribute("width", W * zoom); svg.setAttribute("height", H * zoom);
+  $("root").setAttribute("transform", `scale(${zoom})`);
+  wr.style.backgroundSize = `${G * zoom}px ${G * zoom}px`;
+}
+
+// ---------------- 상태 표시 ----------------
+function updateStatus() {
+  const msgs = [];
+  if (sim.err) msgs.push(`<div class="e">⛔ ${sim.err}</div>`);
+  if (lagging) msgs.push(`<div class="w">⚠️ 계산이 따라가지 못해 정한 재생 속도보다 느리게 돌고 있습니다. 재생 속도를 낮추거나 계산 간격을 늘려 보세요.</div>`);
+  if (sc.elems.length && !sc.elems.some((e) => e.type === "ground")) msgs.push(`<div class="w">ℹ️ 접지가 없습니다. 계산은 되지만 전압 색의 기준(0 V)이 정해지지 않습니다.</div>`);
+  if (view && view.loose) msgs.push(`<div class="w">ℹ️ 연결되지 않은 단자 ${view.loose}개 (빨간 동그라미)</div>`);
+  if (!msgs.length) msgs.push(`부품 ${sc.elems.length}개, 전선 ${sc.wires.length}개, 절점 ${sim.net ? sim.net.nNodes : 0}개 · 문제 없음`);
+  $("status").innerHTML = msgs.join("");
+}
+
+// ---------------- 속성 패널 ----------------
+// 꺼진 스위치·다이오드로 새는 아주 작은 계산상 전류는 0 으로 표시
+const cleanI = (i) => (Math.abs(i) < Math.max(1e-9, 1e-6 * Iref) ? 0 : i);
+function readings(e) {
+  const I = cleanI(sim.I[e.id] || 0), V = sim.volt(e.id), st = sim.st[e.id] || {};
+  const rows = [];
+  if (e.type === "voltmeter") { rows.push(["전압 (순시)", si(V, "V")], ["실효값 (RMS)", si(Math.sqrt(st.ms2 || 0), "V")], ["평균", si(st.ms || 0, "V")]); return rows; }
+  if (e.type === "ammeter") { rows.push(["전류 (순시)", si(I, "A")], ["실효값 (RMS)", si(Math.sqrt(st.ms2 || 0), "A")], ["평균", si(st.ms || 0, "A")]); return rows; }
+  if (e.type === "ground") return [["전압", "0 V (기준)"]];
+  rows.push(["전류", si(I, "A")], ["전압", si(V, "V")], [DEF[e.type].src ? "내보내는 전력" : "소비 전력", si(V * I, "W")]);
+  if (e.type === "motor") rows.push(["속도", `${(st.w * 60 / (2 * Math.PI) || 0).toFixed(1)} rpm`], ["역기전력 E = Kφω", si(st.E || 0, "V")], ["토크 Te = Kφ·i", si(st.Te || 0, "N·m")]);
+  if (e.type === "capacitor") rows.push(["저장 에너지 ½Cv²", si(0.5 * e.p.C * V * V, "J")]);
+  if (e.type === "inductor") rows.push(["저장 에너지 ½Li²", si(0.5 * e.p.L * I * I, "J")]);
+  if (e.type === "lamp") rows.push(["밝기 (정격 대비)", `${(100 * V * I / e.p.Pr).toFixed(0)} %`]);
+  if (e.type === "diode") rows.push(["상태", st.on ? "도통 (켜짐)" : "차단 (꺼짐)"]);
+  if (e.type === "switch" || e.type === "pwm") rows.push(["상태", st.on ? "닫힘" : "열림"]);
+  return rows;
+}
+let readTbl = null;
+function renderProps() {
+  const P = $("props"); P.innerHTML = ""; readTbl = null;
+  const e = sel && sc.elems.find((x) => x.id === sel);
+  const w = sel && sc.wires.find((x) => x.id === sel);
+  if (w) { P.innerHTML = `<h4>전선</h4><div class="d">저항 0 인 도선입니다. 끝점이 단자나 다른 전선에 닿은 곳에서 연결됩니다.</div>`;
+    const b = document.createElement("button"); b.textContent = "삭제"; b.onclick = deleteSel; P.appendChild(b); return; }
+  if (!e) { P.innerHTML = `<h4>부품을 선택하세요</h4><div class="d">회로도의 부품을 클릭하면 값과 측정값이 여기 나옵니다.</div>`; return; }
+  const d = DEF[e.type];
+  P.insertAdjacentHTML("beforeend", `<h4>${d.name}</h4>${d.desc ? `<div class="d">${d.desc}</div>` : ""}`);
+  for (const [k, s] of Object.entries(d.params)) {
+    const f = document.createElement("div"); f.className = "f";
+    if (s.type === "bool") {
+      f.innerHTML = `<label class="chk"><input type="checkbox" ${e.p[k] ? "checked" : ""}> ${s.label}</label>`;
+      f.querySelector("input").onchange = (ev) => { e.p[k] = ev.target.checked; save(); refreshLabels(); };
+    } else {
+      f.innerHTML = `<label>${s.label}${s.unit ? ` [${s.unit}]` : ""}</label><input type="number" step="any" value="${e.p[k]}">`;
+      f.querySelector("input").oninput = (ev) => {
+        let v = parseFloat(ev.target.value); if (!isFinite(v)) return;
+        if (s.min !== undefined) v = Math.max(s.min, v); if (s.max !== undefined) v = Math.min(s.max, v);
+        e.p[k] = v; save(); refreshLabels();
+      };
+    }
+    P.appendChild(f);
+  }
+  const btns = document.createElement("div"); btns.className = "btns";
+  const B = (t, fn) => { const b = document.createElement("button"); b.textContent = t; b.onclick = fn; btns.appendChild(b); };
+  B("↻ 회전", rotateSel);
+  if (!d.one) B("⇄ 방향 뒤집기", () => { const t = terminals(e)[1]; e.x = t[0]; e.y = t[1]; e.rot = (e.rot + 2) % 4; sc.version++; save(); render(); });
+  if (e.type !== "ground") {
+    if (e.type !== "voltmeter") B("📈 전류 그래프", () => addScope(e.id, "I"));
+    if (e.type !== "ammeter") B("📈 전압 그래프", () => addScope(e.id, "V"));
+    if (e.type === "motor") B("📈 속도 그래프", () => addScope(e.id, "n"));
+  }
+  B("삭제", deleteSel);
+  P.appendChild(btns);
+  readTbl = document.createElement("table"); P.appendChild(readTbl);
+  updateReadings();
+}
+function updateReadings() {
+  const e = sel && sc.elems.find((x) => x.id === sel);
+  if (!readTbl || !e) return;
+  readTbl.innerHTML = readings(e).map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
+}
+function refreshLabels() { if (view) for (const v of view.elems) if (v.l1) v.l1.textContent = (v.e.name ? v.e.name + " " : "") + paramText(v.e); }
+
+// ---------------- 그래프 ----------------
+let scopes = [];
+const QN = { I: ["전류", "A", "#d9534f"], V: ["전압", "V", "#2563eb"], n: ["속도", "rpm", "#16a34a"] };
+function addScope(id, q) {
+  if (scopes.some((s) => s.id === id && s.q === q)) return;
+  if (scopes.length >= 6) scopes.shift().div.remove();
+  const e = sc.elems.find((x) => x.id === id); if (!e) return;
+  const div = document.createElement("div"); div.className = "sc";
+  const cv = document.createElement("canvas"); div.appendChild(cv);
+  const x = document.createElement("button"); x.textContent = "×"; x.title = "그래프 닫기";
+  x.onclick = () => { scopes = scopes.filter((s) => s.div !== div); div.remove(); };
+  div.appendChild(x); $("scopes").appendChild(div);
+  const [nm, unit, color] = QN[q];
+  const strip = new RTCharts.Strip(cv, [{ name: `${DEF[e.type].name} ${nm}`, color }], { title: `${nm} [${unit}]`, minSpan: 1e-6 });
+  scopes.push({ id, q, div, strip });
+}
+function scopeVal(s) {
+  const e = sc.elems.find((x) => x.id === s.id); if (!e) return NaN;
+  if (s.q === "I") return sim.I[e.id] || 0;
+  if (s.q === "V") return sim.volt(e.id);
+  return (sim.st[e.id] ? sim.st[e.id].w : 0) * 60 / (2 * Math.PI);
+}
+function clearScopes() { scopes.forEach((s) => s.div.remove()); scopes = []; }
+
+// ---------------- 마우스 ----------------
+const tip = $("tip");
+function gridPt(ev) {
+  const r = $("cv").getBoundingClientRect();
+  return { x: (ev.clientX - r.left) / zoom / G, y: (ev.clientY - r.top) / zoom / G };
+}
+let drag = null;
+const svg = $("cv");
+svg.addEventListener("pointerdown", (ev) => {
+  const p = gridPt(ev), gx = Math.round(p.x), gy = Math.round(p.y);
+  const g = ev.target.closest(".el"), wt = ev.target.dataset && ev.target.dataset.w;
+  if (g) {
+    const e = sc.get(+g.dataset.e); sel = e.id;
+    // 부품을 옮길 때 단자에 붙은 전선 끝도 같이 따라가게
+    const ts = terminals(e).map((t) => t.join(","));
+    const ends = [];
+    for (const w of sc.wires) { if (ts.includes(w.x1 + "," + w.y1)) ends.push([w, 1]); if (ts.includes(w.x2 + "," + w.y2)) ends.push([w, 2]); }
+    // 다른 부품 단자와 바로 맞닿은 단자: 옮긴 뒤 전선을 이어 연결을 유지
+    const touch = terminals(e).map((t, k) => (sc.elems.some((o) => o !== e && terminals(o).some((q) => q[0] === t[0] && q[1] === t[1])) ? [k, t] : null)).filter(Boolean);
+    drag = { kind: "move", e, ox: gx - e.x, oy: gy - e.y, sx: e.x, sy: e.y, moved: false, ends, touch };
+    render();
+  } else if (wt) {
+    sel = +wt; drag = null; render();
+  } else {
+    drag = { kind: "wire", x: gx, y: gy, moved: false };
+  }
+  svg.setPointerCapture(ev.pointerId);
+});
+svg.addEventListener("pointermove", (ev) => {
+  const p = gridPt(ev), gx = Math.round(p.x), gy = Math.round(p.y);
+  if (!drag) { hover(ev, p); return; }
+  tip.style.display = "none";
+  if (drag.kind === "move") {
+    const nx = gx - drag.ox, ny = gy - drag.oy, e = drag.e;
+    if (nx === e.x && ny === e.y) return;
+    const dx = nx - e.x, dy = ny - e.y; e.x = nx; e.y = ny; drag.moved = true;
+    for (const [w, k] of drag.ends) { if (k === 1) { w.x1 += dx; w.y1 += dy; } else { w.x2 += dx; w.y2 += dy; } }
+    sc.version++; render();
+  } else if (drag.kind === "wire") {
+    if (gx === drag.x && gy === drag.y) { $("tmp").style.display = "none"; return; }
+    drag.moved = true; drag.ex = gx; drag.ey = gy;
+    const hf = Math.abs(gx - drag.x) >= Math.abs(gy - drag.y);
+    drag.hf = hf;
+    const X = (v) => v * G;
+    const d = hf ? `M${X(drag.x)},${X(drag.y)} H${X(gx)} V${X(gy)}` : `M${X(drag.x)},${X(drag.y)} V${X(gy)} H${X(gx)}`;
+    $("tmp").setAttribute("d", d); $("tmp").style.display = "";
+  }
+});
+svg.addEventListener("pointerup", () => {
+  if (drag && drag.kind === "move") {
+    if (!drag.moved && drag.e.type === "switch") { drag.e.p.on = !drag.e.p.on; refreshLabels(); renderProps(); }
+    if (drag.moved) for (const [k, t] of drag.touch) { const n = terminals(drag.e)[k]; sc.path(t[0], t[1], n[0], n[1], t[1] === n[1]); }
+    // 꺾인 전선(대각선)이 생겼으면 ㄱ자로 바꿔 줌
+    for (const [w] of drag.ends) if (w.x1 !== w.x2 && w.y1 !== w.y2) {
+      const { x1, y1, x2, y2 } = w; sc.remove(w.id); sc.path(x1, y1, x2, y2, true);
+    }
+    save(); render();
+  } else if (drag && drag.kind === "wire") {
+    $("tmp").style.display = "none";
+    if (drag.moved) { sc.path(drag.x, drag.y, drag.ex, drag.ey, drag.hf); save(); render(); }
+    else if (sel !== null) { sel = null; render(); }
+  }
+  drag = null;
+});
+svg.addEventListener("pointerleave", () => (tip.style.display = "none"));
+function hover(ev, p) {
+  const g = ev.target.closest && ev.target.closest(".el");
+  const wt = ev.target.dataset && ev.target.dataset.w;
+  let txt = "";
+  if (g) { const e = sc.get(+g.dataset.e); txt = DEF[e.type].name + "\n" + readings(e).map(([k, v]) => `${k}: ${v}`).join("\n"); }
+  else if (wt && sim.net) {
+    // 마우스 아래 전선 토막의 전류
+    let best = null, bd = 1e9;
+    sim.net.segs.forEach((s, k) => {
+      if (s.w !== +wt) return;
+      const A = sim.net.P[s.a], B = sim.net.P[s.b], mx = (A[0] + B[0]) / 2, my = (A[1] + B[1]) / 2;
+      const d = Math.hypot(mx - p.x, my - p.y); if (d < bd) { bd = d; best = k; }
+    });
+    if (best !== null) {
+      const s = sim.net.segs[best];
+      txt = `전선\n전류: ${si(Math.abs(cleanI(sim.wc ? sim.wc[best] : 0)), "A")}\n전압 (접지 기준): ${si(sim.V[sim.net.node[s.a]] || 0, "V")}`;
+    }
+  }
+  if (!txt) { tip.style.display = "none"; return; }
+  const r = $("wrap").getBoundingClientRect();
+  tip.textContent = txt; tip.style.display = "block";
+  tip.style.left = (ev.clientX - r.left + $("wrap").scrollLeft + 14) + "px"; tip.style.top = (ev.clientY - r.top + $("wrap").scrollTop + 14) + "px";
+}
+function rotateSel() {
+  const e = sel && sc.elems.find((x) => x.id === sel); if (!e) return;
+  e.rot = ((e.rot || 0) + 1) % 4; sc.version++; save(); render();
+}
+function deleteSel() { if (sel === null) return; sc.remove(sel); sel = null; save(); render(); }
+document.addEventListener("keydown", (ev) => {
+  if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) return;
+  if (ev.key === "Delete" || ev.key === "Backspace") { deleteSel(); ev.preventDefault(); }
+  else if (ev.key === "r" || ev.key === "R") rotateSel();
+  else if (ev.key === "Escape") { sel = null; render(); }
+});
+
+// ---------------- 팔레트 ----------------
+const PALETTE = [
+  ["전원", [["vdc", "직류 전압원 (전지)"], ["vac", "교류 전압원"], ["idc", "전류원"]]],
+  ["수동 소자", [["resistor", "저항"], ["lamp", "전구"], ["inductor", "인덕터 (코일)"], ["capacitor", "커패시터"]]],
+  ["스위치·반도체", [["switch", "스위치"], ["pwm", "PWM 스위치"], ["diode", "다이오드"]]],
+  ["전동기", [["motor", "DC 전동기"]]],
+  ["계기·기타", [["ammeter", "전류계"], ["voltmeter", "전압계"], ["ground", "접지"]]],
+];
+function freeSpot() {
+  const wr = $("wrap");
+  const x0 = Math.ceil(wr.scrollLeft / zoom / G) + 2, y0 = Math.ceil(wr.scrollTop / zoom / G) + 2;
+  const used = new Set([...sc.elems.flatMap((e) => terminals(e)), ...sc.wires.flatMap((w) => [[w.x1, w.y1], [w.x2, w.y2]])].map((p) => p.join(",")));
+  const busy = (x, y) => { for (let k = -1; k <= SPAN + 1; k++) for (let j = -2; j <= 2; j++) if (used.has(`${x + k},${y + j}`)) return true; return false; };
+  for (let y = y0; y < y0 + 24; y += 4) for (let x = x0; x < x0 + 40; x += 2) if (!busy(x, y)) return [x, y];
+  return [x0, y0];
+}
+function addPart(type, x, y) {
+  if (x === undefined) [x, y] = freeSpot();
+  const e = sc.add(type, x, y, 0); sel = e.id; save(); render();
+}
+PALETTE.forEach(([cat, items]) => {
+  const h = document.createElement("h5"); h.textContent = cat; $("pal").appendChild(h);
+  for (const [type, label] of items) {
+    const b = document.createElement("button"); b.textContent = "＋ " + label; b.draggable = true;
+    b.onclick = () => addPart(type);
+    b.ondragstart = (ev) => ev.dataTransfer.setData("text/plain", type);
+    $("pal").appendChild(b);
+  }
+});
+$("wrap").addEventListener("dragover", (ev) => ev.preventDefault());
+$("wrap").addEventListener("drop", (ev) => {
+  ev.preventDefault(); const type = ev.dataTransfer.getData("text/plain"); if (!DEF[type]) return;
+  const p = gridPt(ev); addPart(type, Math.round(p.x - (DEF[type].one ? 0 : SPAN / 2)), Math.round(p.y));
+});
+
+// ---------------- 도구 막대 ----------------
+Object.keys(TEMPLATES).forEach((n) => { const o = document.createElement("option"); o.textContent = n; $("tpl").appendChild(o); });
+function setSel(id, v) {     // 목록에서 값이 같은(숫자로 비교) 항목 고르기
+  const s = $(id); if (!s || s.tagName !== "SELECT") return;
+  const o = [...s.options].find((x) => Math.abs(+x.value - v) <= 1e-12 * Math.abs(v)); if (o) s.value = o.value;
+}
+function applySettings(name) {
+  const t = TPL_SET[name]; if (!t) return;
+  setSel("win", t.win); setSel("ts", t.h);
+  const hid = $("spd"), rng = hid && hid.parentElement.querySelector("input[type=range]");
+  // 재생 속도 목록의 최솟값 = 1/10000 (로그 눈금 10^-4 … 1)
+  if (rng) { const lo = -4; rng.value = Math.round((Math.log10(t.spd) - lo) / (0 - lo) * 1000); rng.dispatchEvent(new Event("input")); }
+  clearScopes();
+  for (const [type, q] of t.scopes) { const e = sc.elems.find((x) => x.type === type); if (e) addScope(e.id, q); }
+}
+function loadTemplate(name) {
+  sc.clear(); sc.nid = 1; TEMPLATES[name](sc); sel = null; restart(); save(); render(); layoutSvg(true);
+  applySettings(name);
+  try { localStorage.setItem(STORE + "-tpl", name); } catch (e) {}
+}
+$("loadTpl").onclick = () => {
+  if (sc.elems.length && !confirm("지금 회로를 지우고 예제를 불러올까요?")) return;
+  loadTemplate($("tpl").value);
+};
+let running = true;
+$("run").onclick = () => { running = !running; $("run").textContent = running ? "⏸ 일시정지" : "▶ 실행"; };
+function restart() { sim.reset(); acc = 0; scopes.forEach((s) => s.strip.clear()); nextSample = 0; }
+$("reset").onclick = restart;
+$("rot").onclick = rotateSel;
+$("del").onclick = deleteSel;
+$("clear").onclick = () => { if (confirm("회로를 모두 지울까요?")) { sc.clear(); sel = null; clearScopes(); save(); render(); } };
+$("exp").onclick = () => { $("json").value = JSON.stringify(sc.toJSON()); $("dlg").showModal(); };
+$("close").onclick = () => $("dlg").close();
+$("imp").onclick = () => {
+  try { sc.load(JSON.parse($("json").value)); sel = null; restart(); clearScopes(); save(); render(); layoutSvg(true); $("dlg").close(); }
+  catch (e) { alert("JSON 을 읽을 수 없습니다: " + e.message); }
+};
+$("zin").onclick = () => { zoom = Math.min(3, zoom * 1.2); layoutSvg(false); };
+$("zout").onclick = () => { zoom = Math.max(0.3, zoom / 1.2); layoutSvg(false); };
+$("zfit").onclick = () => layoutSvg(true);
+
+// ---------------- 실행 루프 ----------------
+const first = Object.keys(TEMPLATES)[0];
+if (!loadSaved()) TEMPLATES[first](sc);
+render(); layoutSvg(true);
+let savedTpl = null; try { savedTpl = localStorage.getItem(STORE + "-tpl"); } catch (e) {}
+if (savedTpl && TEMPLATES[savedTpl]) { $("tpl").value = savedTpl; }
+applySettings(savedTpl && TEMPLATES[savedTpl] ? savedTpl : first);
+
+const vcol = (v) => {
+  if (!$("showVolt").checked) return "#4b5563";
+  const x = Math.max(-1, Math.min(1, v / Vref));
+  const mix = (a, b, t) => a.map((c, i) => Math.round(c + (b[i] - c) * t));
+  const c = x >= 0 ? mix([120, 120, 120], [22, 163, 74], x) : mix([120, 120, 120], [220, 38, 38], -x);
+  return `rgb(${c.join(",")})`;
+};
+function frame(now) {
+  const dtWall = Math.min((now - last) / 1000, 0.05); last = now;
+  const h = +$("ts").value, win = +$("win").value;
+  if (running && sc.elems.length) {
+    acc += dtWall * +$("spd").value;
+    let n = Math.floor(acc / h + 1e-9);
+    const cap = 25000;
+    lagging = n > cap; n = Math.min(n, cap);
+    acc = lagging ? 0 : acc - n * h;
+    const t0 = performance.now();
+    for (let k = 0; k < n; k++) {
+      sim.step(h);
+      if (sim.t >= nextSample) {
+        for (const s of scopes) s.strip.push(sim.t, [scopeVal(s)]);
+        nextSample = sim.t + win / 600;
+      }
+      if ((k & 255) === 255 && performance.now() - t0 > 30) { lagging = true; break; }
+    }
+  }
+  sim.wc = sim.wireCurrents();
+  // 표시 기준 (최댓값을 천천히 따라감)
+  let im = 0, vm = 0;
+  for (const id in sim.I) im = Math.max(im, Math.abs(sim.I[id]));
+  for (const v of sim.V) vm = Math.max(vm, Math.abs(v));
+  Iref = Math.max(im, Iref * Math.exp(-dtWall / 3), 1e-9); Vref = Math.max(vm, Vref * Math.exp(-dtWall / 3), 1e-6);
+  if (view) {
+    for (const w of view.wires) w.ln.setAttribute("stroke", vcol(sim.V[w.node] || 0));
+    const dots = $("showDots").checked;
+    for (const ph of view.paths) {
+      const I = cleanI(ph.cur()), r = Math.abs(I) / Iref;
+      const show = dots && r > 2e-3 && Math.abs(I) > 1e-9 && !sim.err;
+      const sp = show ? Math.sign(I) * 110 * Math.min(1, Math.sqrt(r)) : 0;
+      ph.phase = (ph.phase + sp * dtWall + 1600) % 16;
+      ph.dots.forEach((d, k) => {
+        const s = k * 16 + ph.phase;
+        if (!show || s > ph.len) { d.setAttribute("cx", -99); return; }
+        const f = s / ph.len;
+        d.setAttribute("cx", ph.x1 + (ph.x2 - ph.x1) * f); d.setAttribute("cy", ph.y1 + (ph.y2 - ph.y1) * f);
+      });
+    }
+    for (const v of view.elems) {
+      const e = v.e, st = sim.st[e.id] || {};
+      if (v.refs.lever) {
+        const on = e.type === "switch" ? e.p.on : st.on;
+        v.refs.lever.setAttribute("x2", on ? 58 : 54); v.refs.lever.setAttribute("y2", on ? 0 : -17);
+      }
+      if (v.refs.glow) { const b = Math.max(0, Math.min(1, (sim.volt(e.id) * (sim.I[e.id] || 0)) / e.p.Pr)); v.refs.glow.setAttribute("fill", `rgba(255,${200 - 40 * b | 0},0,${b})`); }
+      if (v.spoke) {
+        const cx = (v.t[0][0] + v.t[1][0]) / 2, cy = (v.t[0][1] + v.t[1][1]) / 2, th = st.th || 0;
+        v.spoke.setAttribute("x1", cx + 13 * Math.cos(th)); v.spoke.setAttribute("y1", cy + 13 * Math.sin(th));
+        v.spoke.setAttribute("x2", cx + 17 * Math.cos(th)); v.spoke.setAttribute("y2", cy + 17 * Math.sin(th));
+      }
+    }
+  }
+  if (now - lastUi > 150) {
+    lastUi = now;
+    if (view) for (const v of view.elems) if (v.l2) {
+      const e = v.e, st = sim.st[e.id] || {};
+      let t = "";
+      // 교류·PWM 이 있는 회로에서만 실효값을 함께 표시
+      const ac = sc.elems.some((x) => x.type === "vac" || x.type === "pwm");
+      if (e.type === "voltmeter") t = si(sim.volt(e.id), "V") + (ac ? `  (실효 ${si(Math.sqrt(st.ms2 || 0), "V")})` : "");
+      else if (e.type === "ammeter") t = si(cleanI(sim.I[e.id] || 0), "A") + (ac ? `  (실효 ${si(Math.sqrt(st.ms2 || 0), "A")})` : "");
+      else if ($("showCur").checked) t = si(cleanI(sim.I[e.id] || 0), "A") + (e.type === "motor" ? `  ${((st.w || 0) * 60 / (2 * Math.PI)).toFixed(0)} rpm` : "");
+      v.l2.textContent = t;
+    }
+    refreshLabels(); updateReadings(); updateStatus();
+    let src = 0; for (const e of sc.elems) if (DEF[e.type].src) src += sim.volt(e.id) * cleanI(sim.I[e.id] || 0);
+    $("ro").innerHTML = `<span>시뮬레이션 시각 <b>${sim.t < 1 ? (sim.t * 1000).toFixed(2) + " ms" : sim.t.toFixed(3) + " s"}</b></span>` +
+      `<span>전원이 내보내는 전력 <b>${si(src, "W")}</b></span><span>가장 큰 전류 <b>${si(cleanI(im), "A")}</b></span>`;
+  }
+  for (const s of scopes) s.strip.draw(sim.t, win);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script></body></html>
