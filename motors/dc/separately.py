@@ -2,7 +2,7 @@
 import numpy as np
 from motors.registry import register
 from motors.dc.base_dc import (DCMotor, SPEC_V, SPEC_VF, SPECS_ARM, SPECS_SHUNT_FIELD,
-                               SPECS_MECH, SPECS_LOAD)
+                               SPECS_MECH, SPECS_LOAD, SPEC_POLES_DC)
 
 
 @register
@@ -29,7 +29,7 @@ class SeparatelyExcitedDC(DCMotor):
 
     @classmethod
     def param_specs(cls):
-        return [SPEC_V, SPEC_VF, *SPECS_ARM, *SPECS_SHUNT_FIELD, *SPECS_MECH, *SPECS_LOAD]
+        return [SPEC_V, SPEC_VF, *SPECS_ARM, *SPECS_SHUNT_FIELD, *SPECS_MECH, *SPECS_LOAD, SPEC_POLES_DC]
 
     # ---- 여자 방식 고유 부분 -------------------------------------------
     def kphi(self, ia, if_):

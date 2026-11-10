@@ -50,6 +50,7 @@ def principle_html(model, params):
         "ifNom": if_nom,
         "forceRef": float(model.kphi(I_r, if_nom) * I_r),
         "fieldCtrl": model.field_control_input,
+        "poles": int(round(params.get("poles", 2))),
     }
     return _build("principle.html", cfg)
 
@@ -99,13 +100,22 @@ def bldc_control_html(params):
 
 
 # ---------------------------------------------------------------- 교류 전동기
+def _winding_js(model):
+    from motors.winding import make
+    p = model.p
+    kind = "concentrated" if float(p.get("winding", 0.0)) >= 0.5 else "distributed"
+    return make(kind, int(round(p["poles"])), int(round(p.get("q", 2)))).to_js()
+
+
 def _im_cfg(model):
     p = model.p
     keys = ["V", "f", "Rs", "Rr", "Lls", "Llr", "Lm", "poles", "J", "B"]
     Tmax, _ = model.max_torque()
     Ls = p["Lls"] + p["Lm"]
     psr = (2 / 3) ** 0.5 * p["V"] / (2 * 3.141592653589793 * p["f"]) * p["Lm"] / Ls
-    return {"p": {k: float(p[k]) for k in keys}, "TL": p["TL"], "Irated": p["I_rated"], "Tmax": Tmax, "psrNom": psr}
+    P = int(round(p["poles"]))
+    return {"p": {k: float(p[k]) for k in keys}, "TL": p["TL"], "Irated": p["I_rated"], "Tmax": Tmax, "psrNom": psr,
+            "winding": _winding_js(model), "Nb": 7 * P if P <= 4 else 5 * P}
 
 
 def im_principle_html(model):
@@ -121,7 +131,7 @@ def _pmsm_cfg(model):
     keys = ["Vdc", "Rs", "Ld", "Lq", "lam", "poles", "J", "B"]
     T0 = model.max_torque_at_speed(1.0)[0]
     return {"p": {k: float(p[k]) for k in keys}, "TL": p["TL"], "Imax": p["Imax"], "Tmax": T0,
-            "nBase": model.base_speed() * 60 / (2 * 3.141592653589793)}
+            "nBase": model.base_speed() * 60 / (2 * 3.141592653589793), "winding": _winding_js(model)}
 
 
 def pmsm_principle_html(model):

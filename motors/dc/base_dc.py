@@ -101,6 +101,11 @@ SPEC_COMPOUND_SIGN = ParamSpec(
     help="가동: 직권 자속이 분권 자속을 돕는다 (Kφ = Laf·If + Ms·Ia). "
          "차동: 서로 반대 (Kφ = Laf·If − Ms·Ia)")
 
+G_STRUCT = "구조 (그림용)"
+SPEC_POLES_DC = ParamSpec("poles", "P", "극수", "", 2.0, G_STRUCT, ui_key="dc_P",
+                          choices=(("2극", 2.0), ("4극", 4.0), ("6극", 6.0)),
+                          help="단면 그림과 3D 구조에 쓰입니다. 계산은 등가 Kφ 로 하므로 결과에는 영향이 없습니다.")
+
 SPECS_MECH = [
     ParamSpec("J", "J", "관성 모멘트", "kg·m²", 0.1, G_MEC, step=0.01),
     ParamSpec("B", "B", "점성 마찰 계수", "N·m·s/rad", 0.005, G_MEC, allow_zero=True,

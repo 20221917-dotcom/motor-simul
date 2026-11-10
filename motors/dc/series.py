@@ -2,7 +2,7 @@
 import numpy as np
 from motors.registry import register
 from motors.dc.base_dc import (DCMotor, SPEC_V, SPECS_ARM, SPECS_SERIES_FIELD, SPECS_MECH,
-                               SPECS_LOAD)
+                               SPECS_LOAD, SPEC_POLES_DC)
 
 
 @register
@@ -33,7 +33,7 @@ class SeriesDC(DCMotor):
 
     @classmethod
     def param_specs(cls):
-        return [SPEC_V, *SPECS_ARM, *SPECS_SERIES_FIELD, *SPECS_MECH, *SPECS_LOAD]
+        return [SPEC_V, *SPECS_ARM, *SPECS_SERIES_FIELD, *SPECS_MECH, *SPECS_LOAD, SPEC_POLES_DC]
 
     def kphi(self, ia, if_):
         return self.p["Ms"] * if_

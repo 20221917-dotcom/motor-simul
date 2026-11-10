@@ -12,12 +12,6 @@
       <option value="0.1" selected>1/10 배</option><option value="0.25">1/4 배</option>
       <option value="0.5">1/2 배</option><option value="1">실시간 (1배)</option></select></div>
   <label class="chk"><input id="fric" type="checkbox">마찰형 부하</label>
-  <div class="ctl" style="max-width:190px"><label>보기</label>
-    <select id="view"><option value="simple">단순 모형 (코일 1개)</option>
-      <option value="real" selected>실제 구조 (단면)</option><option value="side">실제 구조 (측면)</option>
-      <option value="both">실제 구조 (단면 + 측면)</option></select></div>
-  <div class="ctl" style="max-width:100px"><label>극수</label>
-    <select id="poles"><option value="2" selected>2극</option><option value="4">4극</option></select></div>
   <label class="chk"><input id="labels" type="checkbox" checked>부품 이름</label>
   <button id="pause">⏸ 일시정지</button>
   <button id="restart" class="primary">⟲ 정지 상태에서 다시 기동</button>
@@ -72,16 +66,11 @@ const RPM = 60 / (2 * Math.PI);
 function drawMotor(o) {
   const [ctx, W, H] = RTCharts.setupCanvas($("sec"));
   ctx.clearRect(0, 0, W, H);
-  const opt = { labels: $("labels").checked, poles: +$("poles").value, slots: 24,
+  const opt = { labels: $("labels").checked, poles: CFG.poles, slots: 24,
                 fieldRatio: CFG.ifNom > 0 ? Math.abs(o.if) / CFG.ifNom : 1, forceRef: CFG.forceRef };
-  const v = $("view").value;
-  if (v === "simple") MotorDraw.drawSimple(ctx, 0, 0, W, H, o, theta, opt);
-  else if (v === "real") MotorDraw.drawReal(ctx, 0, 0, W, H, o, theta, opt);
-  else if (v === "side") MotorDraw.drawSide(ctx, 0, 0, W, H, o, theta, opt);
-  else { MotorDraw.drawReal(ctx, 0, 0, W, H * 0.6, o, theta, opt); MotorDraw.drawSide(ctx, 0, H * 0.6, W, H * 0.4, o, theta, opt); }
+  MotorDraw.drawReal(ctx, 0, 0, W, H, o, theta, opt);
   ctx.fillStyle = "#333"; ctx.font = "13px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "top";
-  ctx.fillText(`ω = ${(o.w * RPM).toFixed(0)} rpm   Ia = ${o.ia.toFixed(1)} A   Kφ = ${o.k.toFixed(3)} V·s/rad`, W / 2, 0);
-  $("poles").disabled = v === "simple" || v === "side";
+  ctx.fillText(`${CFG.poles}극 · ω = ${(o.w * RPM).toFixed(0)} rpm   Ia = ${o.ia.toFixed(1)} A   Kφ = ${o.k.toFixed(3)} V·s/rad`, W / 2, 0);
 }
 
 // ---- 전압 분배 막대 ----
@@ -143,6 +132,6 @@ function frame(now) {
     `<span>Te <b>${o.Te.toFixed(2)} N·m</b></span><span>TL <b>${o.TL.toFixed(2)} N·m</b></span>`;
   requestAnimationFrame(frame);
 }
-$("secnote").textContent = "회전 표시는 눈에 보이도록 줄인 속도입니다 (실제 값은 위 숫자). 실제 구조 그림은 개념도이며, 계산 모델은 극수·슬롯 수와 무관한 등가 모델입니다.";
+$("secnote").textContent = "실제 구조 단면 (극수는 파라미터 설정의 '구조' 항목). 회전 표시는 눈에 보이도록 줄인 속도입니다 (실제 값은 위 숫자). 3D 구조와 측면은 ⑤ 구조 탭에서 볼 수 있습니다.";
 requestAnimationFrame(frame);
 </script></body></html>

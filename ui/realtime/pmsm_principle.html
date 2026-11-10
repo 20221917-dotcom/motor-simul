@@ -1,7 +1,7 @@
 <!doctype html><html><head><meta charset="utf-8"><style>/*CSS*/
 .wrap { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr); gap: 12px; }
 @media (max-width: 800px) { .wrap { grid-template-columns: 1fr; } }
-#mot { height: 440px; } .s { height: 140px; }
+#mot { height: 480px; } .s { height: 140px; }
 </style></head><body>
 <div class="bar">
   <div class="ctl"><label>속도 지령 n* <b id="lW"></b></label><input id="W" type="range"></div>
@@ -13,12 +13,12 @@
     <option value="0.002">1/500 배</option><option value="0.005" selected>1/200 배</option><option value="0.01">1/100 배</option><option value="0.05">1/20 배</option><option value="0.2">1/5 배</option></select></div>
   <div class="ctl" style="max-width:120px"><label>그래프 폭</label><select id="win">
     <option value="0.02">20 ms</option><option value="0.1" selected>0.1 s</option><option value="0.5">0.5 s</option><option value="2">2 s</option></select></div>
+  <label class="chk"><input id="labels" type="checkbox" checked>부품 이름</label>
   <button id="pause">⏸ 일시정지</button><button id="restart" class="primary">⟲ 정지 상태에서 다시 기동</button>
 </div>
 <div class="readout" id="ro"></div>
 <div class="wrap">
-  <div><canvas id="mot"></canvas><div class="note">2극 등가 그림 (전기각). 실선 d축 = 자석 N 방향, 점선 q축 = d축 + 90°.
-    보라: 고정자 전류 벡터, 빨강: id 성분, 초록: iq 성분. 토크 = (3/2)(P/2)[λf·iq + (Ld − Lq)·id·iq].</div></div>
+  <div><canvas id="mot"></canvas><div class="note" id="mnote"></div></div>
   <div><canvas class="s" id="cI"></canvas><canvas class="s" id="cD"></canvas><canvas class="s" id="cW"></canvas><canvas class="s" id="cT"></canvas></div>
 </div>
 <script>/*AC*/</script><script>/*ACDRAW*/</script><script>/*CHARTS*/</script>
@@ -46,18 +46,12 @@ const sW = new RTCharts.Strip($("cW"), [{ name: "지령", color: "#e9c46a", widt
 const sT = new RTCharts.Strip($("cT"), [{ name: "Te", color: "#2a9d8f" }, { name: "TL", color: "#6c757d", dash: true }], { title: "토크 [N·m]", minSpan: 0.5 });
 function draw(o) {
   const [ctx, W, H] = RTCharts.setupCanvas($("mot")); ctx.clearRect(0, 0, W, H);
-  const m = ACDraw.M(W, H, 2.1), Iref = CFG.Imax;
-  ACDraw.stator(ctx, m, [o.ia, o.ib, o.ic], Iref);
-  ACDraw.magnet(ctx, m, o.the); ACDraw.axes(ctx, m, o.the);
-  const sc = 1.0 / Iref, ang = Math.atan2(o.isb, o.isa), mag = Math.hypot(o.isa, o.isb);
-  if (mag > 1e-3) {
-    ACDraw.vec(ctx, m, o.the, Math.abs(o.id) * sc, "#d62828", 3); if (o.id < 0) ACDraw.vec(ctx, m, o.the + Math.PI, Math.abs(o.id) * sc, "#d62828", 3);
-    ACDraw.vec(ctx, m, o.the + Math.sign(o.iq || 1) * Math.PI / 2, Math.abs(o.iq) * sc, "#2a9d3a", 3);
-    ACDraw.vec(ctx, m, ang, mag * sc, "#7c3aed", 5);
-  }
-  const beta = ((ang - o.the) * 180 / Math.PI % 360 + 540) % 360 - 180;
-  ACDraw.txt(ctx, `전류 벡터 각 (d축 기준) ${beta.toFixed(0)}°  ·  id = 0 이면 90°, MTPA·약계자는 90° 보다 큼`, 6, 12, { align: "left", color: "#555" });
+  const lab = $("labels").checked, m = ACDraw.M(W, H, lab ? 2.75 : 2.1), Iref = CFG.Imax;
+  ACDraw.realSection(ctx, m, { w: CFG.winding, i3: [o.ia, o.ib, o.ic], isa: o.isa, isb: o.isb, Iref, thm: o.thm, rotor: "ipm", labels: lab });
+  const beta = (((Math.atan2(o.isb, o.isa) - o.the) * 180 / Math.PI) % 360 + 540) % 360 - 180;
+  ACDraw.txt(ctx, `${P.poles}극 · 슬롯 ${CFG.winding.slots}개 · 전류 벡터가 d축보다 전기각 ${beta.toFixed(0)}° 앞섬 (id=0 이면 90°)`, 6, 12, { align: "left", color: "#555" });
 }
+$("mnote").textContent = "실제 구조 단면. 회전자에 매입된 영구자석 (빨강 N, 파랑 S), 점선은 첫 극의 d축·q축. 슬롯 도체는 상별 색과 ⊙/⊗, 고정자 안쪽 띠는 고정자 전류가 만드는 자계 (파랑 S, 빨강 N). 고정자 자계 극이 자석 극보다 전기각 90° 정도 앞서 회전자를 끌고 갑니다.";
 let last = performance.now(), nextSample = 0;
 function frame(now) {
   const dtWall = Math.min((now - last) / 1000, 0.05); last = now;

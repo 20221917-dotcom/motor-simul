@@ -19,7 +19,7 @@ def _run(choice, extra=None):
 def test_all_tabs_render(choice):
     at = _run(choice)
     assert not at.exception, [e.value for e in at.exception]
-    assert len(at.tabs) == 4
+    assert len(at.tabs) == 5          # ①~④ + ⑤ 구조 살펴보기
 
 
 def test_differential_compound_with_comparisons():

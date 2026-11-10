@@ -3,7 +3,7 @@ import numpy as np
 from motors.registry import register
 from motors.dc.base_dc import (DCMotor, SPEC_V, SPECS_ARM, SPECS_SHUNT_FIELD,
                                SPECS_SERIES_FIELD_COMPOUND, SPEC_COMPOUND_SIGN, SPECS_MECH,
-                               SPECS_LOAD)
+                               SPECS_LOAD, SPEC_POLES_DC)
 
 
 @register
@@ -35,7 +35,7 @@ class CompoundDC(DCMotor):
     @classmethod
     def param_specs(cls):
         return [SPEC_V, *SPECS_ARM, *SPECS_SHUNT_FIELD, *SPECS_SERIES_FIELD_COMPOUND,
-                SPEC_COMPOUND_SIGN, *SPECS_MECH, *SPECS_LOAD]
+                SPEC_COMPOUND_SIGN, *SPECS_MECH, *SPECS_LOAD, SPEC_POLES_DC]
 
     @property
     def sigma(self):

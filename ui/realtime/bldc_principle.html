@@ -1,7 +1,7 @@
 <!doctype html><html><head><meta charset="utf-8"><style>/*CSS*/
 .wrap { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr); gap: 12px; }
 @media (max-width: 800px) { .wrap { grid-template-columns: 1fr; } }
-#mot { height: 400px; } #inv { height: 300px; } .s { height: 140px; }
+#mot { height: 440px; } #inv { height: 300px; } .s { height: 140px; }
 table.st { border-collapse: collapse; font-size: 12px; width: 100%; margin-top: 4px; }
 table.st td, table.st th { border: 1px solid #e3e3e3; padding: 2px 6px; text-align: center; }
 table.st tr.on { background: #fff3cd; font-weight: 600; }
@@ -16,8 +16,6 @@ table.st tr.on { background: #fff3cd; font-weight: 600; }
   <div class="ctl" style="max-width:130px"><label>그래프 폭</label><select id="win">
     <option value="0.004">4 ms</option><option value="0.01" selected>10 ms</option><option value="0.03">30 ms</option>
     <option value="0.1">100 ms</option><option value="0.5">0.5 s</option></select></div>
-  <div class="ctl" style="max-width:190px"><label>보기</label><select id="view">
-    <option value="eq" selected>2극 등가 (전기각 기준)</option><option value="real">실제 구조 (P극)</option></select></div>
   <label class="chk"><input id="fric" type="checkbox">마찰형 부하</label>
   <label class="chk"><input id="labels" type="checkbox" checked>이름 표시</label>
   <button id="pause">⏸ 일시정지</button>
@@ -90,7 +88,7 @@ function txt(ctx, s, x, y, o) { ctx.font = (o && o.font) || "12px system-ui"; ct
 function drawMotor(o) {
   const [ctx, W, H] = RTCharts.setupCanvas($("mot")); ctx.clearRect(0, 0, W, H);
   const m = M(W, H, 2.15), lab = $("labels").checked, Iref = Math.max(CFG.Irated, 1);
-  const i3 = [o.ia, o.ib, o.ic], eq = $("view").value === "eq";
+  const i3 = [o.ia, o.ib, o.ic], eq = false;   // 항상 실제 구조 단면
   sector(ctx, m, 1.75, 2.0, 0, 2 * Math.PI, "#8a929b");              // 고정자 계철
   if (eq) {
     // 이빨 6개: 상 x 의 코일 축 β 와 반대편 β+180°
