@@ -3,7 +3,6 @@ import streamlit as st
 
 from motors import registry
 from ui.params_panel import render_params
-from ui import structure_tab
 from ui.tabs.dc import tab_principle, tab_steady, tab_dynamic, tab_control
 
 ASSUMPTIONS = ("**모델 가정** · 선형 자기회로 (Kφ = Laf·If, Ms·Ia), 자기포화·전기자 반작용·철손·"
@@ -29,7 +28,7 @@ def render():
         st.stop()
     model = model_cls(params)
 
-    tabs = st.tabs(["① 원리 이해", "② 정상상태 특성", "③ 동특성 (시간 응답)", "④ 제어", "⑤ 구조 살펴보기"])
+    tabs = st.tabs(["① 원리 이해", "② 정상상태 특성", "③ 동특성 (시간 응답)", "④ 제어"])
     with tabs[0]:
         tab_principle.render(model, params)
     with tabs[1]:
@@ -38,8 +37,6 @@ def render():
         tab_dynamic.render(model, params)
     with tabs[3]:
         tab_control.render(model, params)
-    with tabs[4]:
-        structure_tab.render_dc(model, params)
 
     st.divider()
     st.caption(ASSUMPTIONS)

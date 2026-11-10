@@ -10,7 +10,6 @@ from motors import registry
 import motors.bldc.model  # noqa: F401  (모델 등록 보장)
 from ui import realtime
 from ui.params_panel import render_params
-from ui import structure_tab
 from ui.plots import info_metric, style, PALETTE
 
 PCOL = ["#d62828", "#2a9d3a", "#1d4ed8"]
@@ -258,7 +257,7 @@ def render():
         st.error("파라미터에 맞지 않는 값이 있습니다.\n\n" + "\n".join(f"- {e}" for e in errors))
         st.stop()
     m = cls(params)
-    tabs = st.tabs(["① 원리 이해", "② 정상상태 특성", "③ 동특성 (시간 응답)", "④ 제어", "⑤ 구조 살펴보기"])
+    tabs = st.tabs(["① 원리 이해", "② 정상상태 특성", "③ 동특성 (시간 응답)", "④ 제어"])
     with tabs[0]:
         tab_principle(m, params)
     with tabs[1]:
@@ -267,7 +266,5 @@ def render():
         tab_dynamic(m, params)
     with tabs[3]:
         tab_control(m, params)
-    with tabs[4]:
-        structure_tab.render_bldc(params)
     st.divider()
     st.caption(ASSUMPTIONS)

@@ -11,7 +11,6 @@ from motors import registry
 import motors.ac.pmsm  # noqa: F401  (모델 등록 보장)
 from ui import realtime
 from ui.params_panel import render_params
-from ui import structure_tab
 from ui.plots import info_metric, style, mark_events, PALETTE
 
 ASSUMPTIONS = ("**모델 가정** · 정현파 역기전력, 3상 평형, 선형 자기회로(Ld·Lq 일정), 철손·코깅 토크·인버터 데드타임 무시, "
@@ -239,7 +238,7 @@ def render():
         st.error("파라미터에 맞지 않는 값이 있습니다.\n\n" + "\n".join(f"- {e}" for e in errors))
         st.stop()
     m = cls(params)
-    tabs = st.tabs(["① 원리 이해", "② 정상상태 · 운전 영역", "③ 계통 직결 (동기 운전·탈조)", "④ 제어", "⑤ 구조 살펴보기"])
+    tabs = st.tabs(["① 원리 이해", "② 정상상태 · 운전 영역", "③ 계통 직결 (동기 운전·탈조)", "④ 제어"])
     with tabs[0]:
         tab_principle(m, params)
     with tabs[1]:
@@ -248,7 +247,5 @@ def render():
         tab_grid(m, params)
     with tabs[3]:
         tab_control(m, params)
-    with tabs[4]:
-        structure_tab.render_pmsm(params)
     st.divider()
     st.caption(ASSUMPTIONS)

@@ -19,7 +19,7 @@ def _run(choice, extra=None):
 def test_all_tabs_render(choice):
     at = _run(choice)
     assert not at.exception, [e.value for e in at.exception]
-    assert len(at.tabs) == 5          # ①~④ + ⑤ 구조 살펴보기
+    assert len(at.tabs) == 4
 
 
 def test_differential_compound_with_comparisons():
@@ -39,7 +39,8 @@ def test_invalid_parameter_stops_with_error():
     ("ui.pages.concepts", "em_basics"), ("ui.pages.concepts", "commutation"),
     ("ui.pages.concepts", "magnetic"), ("ui.pages.concepts", "control_basics"),
     ("ui.pages.concepts", "symbols"), ("ui.pages.concepts", "arago"), ("ui.pages.induction", "render"),
-    ("ui.pages.pmsm", "render"), ("ui.pages.bldc", "render"), ("ui.pages.dc_blocks", "render"),
+    ("ui.pages.pmsm", "render"), ("ui.pages.structure", "dc"), ("ui.pages.structure", "bldc"),
+    ("ui.pages.structure", "induction"), ("ui.pages.structure", "pmsm"), ("ui.pages.bldc", "render"), ("ui.pages.dc_blocks", "render"),
 ])
 def test_other_pages_render(module, func):
     script = (f"import sys; sys.path.insert(0, {str(pathlib.Path(APP).parent)!r})\n"
