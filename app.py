@@ -51,6 +51,7 @@ pages = {
     "관련 개념": [
         st.Page(concepts.em_basics, title="전자기 기초 (힘·기전력)", icon="🧭", url_path="em-basics"),
         st.Page(concepts.commutation, title="정류 원리", icon="🔁", url_path="commutation"),
+        st.Page(concepts.arago, title="아라고의 원판 (유도 원리)", icon="💿", url_path="arago"),
         st.Page(concepts.magnetic, title="자기회로와 Kφ", icon="🧲", url_path="magnetic"),
         st.Page(concepts.control_basics, title="제어 기초 (PI·대역폭)", icon="🎛️", url_path="control-basics"),
         st.Page(concepts.symbols, title="기호와 단위", icon="📘", url_path="symbols"),

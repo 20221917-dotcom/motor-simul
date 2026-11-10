@@ -26,6 +26,7 @@ def _build(template, config):
     html = html.replace("/*BLDC*/", _read("bldc_engine.js"))
     html = html.replace("/*AC*/", _read("ac_engine.js"))
     html = html.replace("/*ACDRAW*/", _read("ac_draw.js"))
+    html = html.replace("/*ARAGO*/", _read("arago_engine.js"))
     return html.replace("/*CONFIG*/", json.dumps(config))
 
 
@@ -129,3 +130,7 @@ def pmsm_principle_html(model):
 
 def pmsm_control_html(model):
     return _build("pmsm_control.html", _pmsm_cfg(model))
+
+
+def arago_html():
+    return _build("arago.html", {})

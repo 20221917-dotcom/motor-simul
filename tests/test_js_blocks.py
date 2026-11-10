@@ -172,3 +172,34 @@ def test_pmsm_template_tracks_square_reference():
     assert r["msgs"] == []
     assert _at(r["rec"], 0.28)[1] == pytest.approx(2050, abs=15)
     assert _at(r["rec"], 0.58)[1] == pytest.approx(228, abs=15)
+
+
+# ---------------- 아라고의 원판 ----------------
+ARAGO = RT / "arago_engine.js"
+
+
+def arago_js(body):
+    out = subprocess.run([node, "-e", f"const A = require({json.dumps(str(ARAGO))});\n" + body],
+                         capture_output=True, text=True, check=True, timeout=60)
+    return json.loads(out.stdout)
+
+
+def test_arago_engine_matches_python_torque_and_steady_slip():
+    from ui.pages.concepts import arago_torque, ARAGO_MATERIALS
+    r = arago_js("""const s = new A.Arago({}); const T = [0.5, 2, 6, 50].map((d) => s.torque(d));
+for (let i = 0; i < 10000; i++) s.step(1e-3); const o = s.out();
+console.log(JSON.stringify({ T, wd: o.wd, wm: o.wm, b: s.c.b }));""")
+    for d, T in zip([0.5, 2, 6, 50], r["T"]):
+        assert T == pytest.approx(float(arago_torque(d, ARAGO_MATERIALS["구리"][0])), rel=1e-9)
+    # 정상상태: 와전류 토크 = 마찰 b·ωd  (원판은 자석보다 느림)
+    assert r["wd"] < r["wm"]
+    assert float(arago_torque(r["wm"] - r["wd"], 5.8e7)) == pytest.approx(r["b"] * r["wd"], rel=1e-4)
+
+
+def test_arago_nonconductor_does_not_move_and_eddy_brake_stops_disk():
+    r = arago_js("""const p = new A.Arago({ mat: "플라스틱 (부도체)" }); for (let i = 0; i < 3000; i++) p.step(1e-3);
+const on = new A.Arago({ wm: 0 }), off = new A.Arago({ magnetOn: false }); on.wd = off.wd = 30;
+for (let i = 0; i < 2000; i++) { on.step(1e-3); off.step(1e-3); }
+console.log(JSON.stringify({ plastic: p.wd, on: on.wd, off: off.wd }));""")
+    assert r["plastic"] == 0
+    assert r["on"] < 0.05 * 30 < r["off"]

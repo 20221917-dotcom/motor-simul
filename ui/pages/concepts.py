@@ -1,4 +1,6 @@
-"""관련 개념 페이지들: 전자기 기초, 정류, 자기회로, 제어 기초, 기호·단위."""
+"""관련 개념 페이지들: 전자기 기초, 정류, 아라고의 원판, 자기회로, 제어 기초, 기호·단위."""
+import math
+
 import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
@@ -6,6 +8,7 @@ from scipy.integrate import solve_ivp
 from scipy import signal
 
 from core.units import to_rpm
+from ui import realtime
 from ui.plots import info_metric, style
 from ui.tabs.dc.tab_principle import torque_ripple_section
 
@@ -266,7 +269,116 @@ PI 제어기 Kp + Ki/s 의 영점 Ki/Kp 를 플랜트 극 Ra/La 에 맞추면 �
 
 
 # --------------------------------------------------------------------------
-# 5. 기호와 단위
+# 5. 아라고의 원판
+# --------------------------------------------------------------------------
+# 재질: (도전율 σ [S/m], 표시 색) — ui/realtime/arago_engine.js 와 같은 값
+ARAGO_MATERIALS = {
+    "구리": (5.8e7, "#c77d3a"), "알루미늄": (3.5e7, "#7b8794"), "황동": (1.5e7, "#d4a93c"),
+    "스테인리스강": (1.4e6, "#264653"), "홈 판 구리 (방사형 홈)": (5.8e7 * 0.12, "#e76f51"),
+}
+
+
+def arago_torque(dw, sigma, B=0.25 * math.exp(-4 / 6), t=0.002, a=0.02, rm=0.07):
+    """와전류 토크 [N·m]: 자석 2개, 얇은 도체판 모델 T = 2·rm·σ·t·a²·B²·Δv / (1 + (Δv/vc)²)."""
+    if sigma <= 0:
+        return np.zeros_like(np.asarray(dw, dtype=float))
+    dv = rm * np.asarray(dw, dtype=float)
+    vc = 2 / (MU0 * sigma * t)
+    return 2 * rm * sigma * t * a * a * B * B * dv / (1 + (dv / vc) ** 2)
+
+
+def arago():
+    st.title("🧲 아라고의 원판 (Arago's disk)")
+    st.markdown("""
+1824년 아라고(F. Arago)는 **자석에 붙지 않는 구리 원판**이 그 아래(또는 위)에서 돌리는 자석을 **따라 돈다**는 것을 발견했습니다.
+나중에 패러데이가 전자기 유도로 설명했고, 이 원리가 **유도전동기**의 출발점이 되었습니다.
+아래 시뮬레이션은 계산이 브라우저에서 실시간으로 돌아가므로 값을 바꾸면 바로 반응합니다.
+""")
+    realtime.render(realtime.arago_html(), height=820)
+    c1, c2 = st.columns([3, 2])
+    with c1:
+        st.markdown("#### 왜 따라 도는가")
+        st.markdown("""
+1. 자석이 움직이면 그 아래 원판 부분을 지나는 **자속이 변합니다** (자석 앞쪽은 늘고, 뒤쪽은 줄어듦).
+2. 자속이 변하는 도체에는 **기전력**이 생기고, 원판 안에 소용돌이 모양의 **와전류(맴돌이 전류)** 가 흐릅니다 (패러데이 법칙).
+3. 와전류는 자속 변화를 **방해하는 방향**으로 흐릅니다 (렌츠 법칙). 그 결과 원판은 자석과의 **상대 운동을 줄이는 쪽**,
+   즉 자석이 움직이는 방향으로 힘을 받습니다 (F = I·L × B).
+4. 원판이 자석과 **같은 속도가 되면** 상대 운동이 없어 자속 변화·와전류·토크가 모두 0 이 됩니다.
+   그래서 마찰이나 부하가 있으면 원판은 **항상 자석보다 조금 느리게** 돕니다 → **슬립**.
+""")
+    with c2:
+        st.markdown("#### 계산 모델")
+        st.latex(r"\Delta v = r_m(\omega_m - \omega_d),\quad J \approx \sigma\,\Delta v\,B")
+        st.latex(r"T = 2 r_m\,\frac{\sigma t a^2 B^2\,\Delta v}{1 + (\Delta v / v_c)^2},\quad v_c = \frac{2}{\mu_0 \sigma t}")
+        st.latex(r"J_d \frac{d\omega_d}{dt} = T - T_{제동} - b\,\omega_d")
+        st.caption("σ: 도전율, t: 원판 두께, a: 자석 한 변, B: 자속 밀도(공극이 커지면 감소), r_m: 자석 위치 반지름. "
+                   "속도 차가 작으면 토크가 속도 차에 비례하고, v_c 근처에서 최대가 됩니다 (와전류가 만드는 자계가 원래 자계를 밀어냄).")
+
+    st.markdown("#### 재질에 따른 토크–슬립 곡선 (자석 60 rpm, 공극 4 mm)")
+    wm = 2 * np.pi
+    wd = np.linspace(-0.3 * wm, wm, 300)
+    fig = go.Figure()
+    for name, (sig, col) in ARAGO_MATERIALS.items():
+        fig.add_trace(go.Scatter(x=wd * 60 / (2 * np.pi), y=arago_torque(wm - wd, sig) * 1000, name=name,
+                                 line=dict(color=col, width=2.5)))
+    fig.add_vline(x=60, line=dict(color="#999", dash="dash"), annotation_text="자석 속도 (슬립 0)")
+    style(fig, 340, xaxis_title="원판 속도 [rpm]", yaxis_title="와전류 토크 [mN·m]", hovermode="closest")
+    st.plotly_chart(fig, width="stretch")
+    st.markdown("#### 상대 속도를 크게 했을 때: 최대 토크가 있다 (유도전동기 토크–슬립 곡선과 같은 꼴)")
+    dn = np.linspace(0, 6000, 400)
+    fig2 = go.Figure()
+    for name, (sig, col) in ARAGO_MATERIALS.items():
+        if "스테인리스" in name:
+            continue
+        T = arago_torque(dn * 2 * np.pi / 60, sig) * 1000
+        fig2.add_trace(go.Scatter(x=dn, y=T, name=name, line=dict(color=col, width=2.5)))
+        j = int(np.argmax(T))
+        if 0 < j < len(dn) - 1:
+            fig2.add_trace(go.Scatter(x=[dn[j]], y=[T[j]], mode="markers+text", text=[f" 최대 {dn[j]:.0f} rpm"],
+                                      textposition="top right", marker=dict(color=col, size=9), showlegend=False))
+    style(fig2, 320, xaxis_title="자석과 원판의 속도 차 Δn [rpm]", yaxis_title="와전류 토크 [mN·m]", hovermode="closest")
+    st.plotly_chart(fig2, width="stretch")
+    st.caption("속도 차가 아주 커지면 와전류가 만드는 자계가 자석 자계를 밀어내 토크가 오히려 줄어듭니다. "
+               "최대 토크가 나는 속도 차는 v_c = 2/(μ0·σ·t) 에서 정해지며 도전율·두께가 클수록 작아집니다 "
+               "(유도전동기에서 회전자 저항이 작을수록 최대 토크 슬립이 작아지는 것과 같음). 시뮬레이션에서 자석을 2000~3000 rpm 으로 돌려 보세요.")
+    st.caption("도전율이 큰 재질일수록 같은 슬립에서 토크가 커서 자석을 더 바짝 따라갑니다. "
+               "방사형 홈을 내면 와전류가 흐를 길이 끊겨 토크가 크게 줄어듭니다 (전동기 철심을 얇게 쌓는 이유와 같음). "
+               "플라스틱 같은 부도체는 전류가 흐르지 않아 전혀 돌지 않습니다.")
+
+    st.markdown("#### 유도전동기와 비교")
+    st.markdown("""
+| 아라고의 원판 | 유도전동기 |
+|---|---|
+| 손으로 돌리는 **자석** | 3상 고정자 권선이 만드는 **회전자계** (전기로 자석을 돌리는 셈) |
+| 구리·알루미늄 **원판** | 농형 **회전자** (알루미늄·구리 도체 막대 + 단락 링) |
+| 원판의 **와전류** | 회전자 도체에 **유도되는 전류** |
+| 원판이 자석보다 느림 | 회전자가 동기속도보다 느림 → **슬립** s = (ns − n)/ns |
+| 토크–슬립 곡선: 비례 → 최대 → 감소 | 토크–슬립 곡선: 비례 → **최대 토크** → 감소 |
+| 홈 판은 와전류가 줄어 약함 | 회전자 저항이 크면 최대 토크 슬립이 커짐 |
+""")
+    st.markdown("#### 생활 속 응용")
+    st.markdown("""
+- **와전류 제동기 (리타더)**: 버스·트럭·열차, 롤러코스터. 자석(또는 전자석) 사이로 금속판이 지나가면 마찰 없이 감속합니다.
+  시뮬레이션에서 자석 속도를 0 으로 두고 **'원판 손으로 돌리기'** 를 눌러 보세요.
+- **유도형 전력량계** (옛날 회전 원판 계량기): 알루미늄 원판이 소비 전력에 비례해 돕니다.
+- **와전류식 속도계**, **인덕션 레인지**(와전류로 냄비를 데움), **금속 탐지기**.
+""")
+    with st.expander("해 볼 실험", expanded=True):
+        st.markdown("""
+1. **따라 돌기**: 처음부터 → 원판이 서서히 자석을 따라 돌다가 자석보다 조금 느린 속도에서 멈춥니다 (슬립 몇 %).
+2. **재질 바꾸기**: 구리 → 알루미늄 → 황동 → 스테인리스강 → 플라스틱. 슬립이 어떻게 변하나요?
+   알루미늄은 도전율이 구리보다 작지만 훨씬 가벼워서 더 빨리 따라붙습니다.
+3. **홈 판 구리**: 와전류 길이 끊기면 토크가 약해집니다.
+4. **공극 넓히기**: 자석을 멀리 하면 B 가 작아져 토크가 B² 에 비례해 크게 줄어듭니다.
+5. **제동 토크(부하) 걸기**: 부하가 클수록 슬립이 커지고, 토크–속도 곡선의 최대값을 넘으면 원판이 멈춥니다 (유도전동기의 스톨).
+6. **역회전**: 자석 속도를 음수로 → 원판도 반대로 돕니다.
+7. **최대 토크 넘기기**: 자석을 2000 rpm 이상으로 돌리고 제동 토크를 크게 걸면, 토크–속도 곡선의 최대점을 넘어 원판이 멈춰 버립니다.
+8. **와전류 제동**: 자석 속도 0 → '원판 손으로 돌리기'. '자석 있음'을 끄고 같은 실험을 하면 마찰로만 천천히 멈춥니다.
+""")
+
+
+# --------------------------------------------------------------------------
+# 6. 기호와 단위
 # --------------------------------------------------------------------------
 def symbols():
     st.title("📘 기호와 단위")
