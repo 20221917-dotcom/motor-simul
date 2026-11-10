@@ -585,6 +585,16 @@
         const sc3 = m.add("scope", c(2), 300, { name: "토크 [N·m]" });
         m.w(ref, 0, s1, 0); m.w(s1, 0, pw, 0); m.w(idc, 0, mo, 0); m.w(pw, 0, mo, 1); m.w(mo, 0, s1, 1); m.w(tl, 0, mo, 2);
         m.w(ref, 0, sc1, 0); m.w(mo, 0, sc1, 1); m.w(pw, 0, sc2, 0); m.w(mo, 5, sc2, 1); m.w(mo, 4, sc2, 2); m.w(mo, 2, sc3, 0); m.w(tl, 0, sc3, 1);
+      };      T["유도전동기: 전류(토크) 제어만 (iq* 사각파)"] = (dg) => {
+        const m = mk(dg);
+        const idc = m.add("const", c(0), 40, { value: +idr.toPrecision(3) }, "자속 전류 id*");
+        const ref = m.add("square", c(0), 170, { amp: +(0.5 * iqMax).toPrecision(2), period: 0.6, offset: 0 }, "토크 전류 iq*");
+        const mo = m.add("im", c(2), 40, { mode: "벡터" }, "유도전동기");
+        const sc1 = m.add("scope", c(0), 320, { name: "dq 전류 [A]" });
+        const sc2 = m.add("scope", c(1), 320, { name: "토크 [N·m]" });
+        const sc3 = m.add("scope", c(2), 320, { name: "속도", rpm: true });
+        m.w(idc, 0, mo, 0); m.w(ref, 0, mo, 1);
+        m.w(ref, 0, sc1, 0); m.w(mo, 5, sc1, 1); m.w(mo, 4, sc1, 2); m.w(mo, 2, sc2, 0); m.w(mo, 0, sc3, 0);
       };
     }
     if (env.pmsm) {
@@ -602,13 +612,40 @@
         const sc3 = m.add("scope", c(2), 300, { name: "토크·전압" });
         m.w(ref, 0, s1, 0); m.w(s1, 0, pw, 0); m.w(idc, 0, mo, 0); m.w(pw, 0, mo, 1); m.w(mo, 0, s1, 1); m.w(tl, 0, mo, 2);
         m.w(ref, 0, sc1, 0); m.w(mo, 0, sc1, 1); m.w(pw, 0, sc2, 0); m.w(mo, 4, sc2, 1); m.w(mo, 3, sc2, 2); m.w(mo, 2, sc3, 0); m.w(mo, 5, sc3, 1);
+      };      T["PMSM: 전류(토크) 제어만 (iq* 사각파)"] = (dg) => {
+        const m = mk(dg);
+        const idc = m.add("const", c(0), 40, { value: 0 }, "id* = 0");
+        const ref = m.add("square", c(0), 170, { amp: +(0.5 * Q.Imax).toPrecision(2), period: 0.1, offset: 0 }, "토크 전류 iq*");
+        const mo = m.add("pmsm", c(2), 40, {}, "PMSM");
+        const sc1 = m.add("scope", c(0), 320, { name: "dq 전류 [A]" });
+        const sc2 = m.add("scope", c(1), 320, { name: "토크 [N·m]" });
+        const sc3 = m.add("scope", c(2), 320, { name: "속도", rpm: true });
+        m.w(idc, 0, mo, 0); m.w(ref, 0, mo, 1);
+        m.w(ref, 0, sc1, 0); m.w(mo, 4, sc1, 1); m.w(mo, 3, sc1, 2); m.w(mo, 2, sc2, 0); m.w(mo, 0, sc3, 0);
+      };
+      T["PMSM: 약계자 (id* < 0 으로 기저 속도 이상)"] = (dg) => {
+        const m = mk(dg), Iq = +(0.8 * Q.Imax).toPrecision(3);
+        const ref = m.add("const", c(0), 40, { value: Math.round(1.5 * Q.nBase / 10) * 10, rpm: true }, "속도 지령 n*");
+        const s1 = m.add("sum", c(1), 40, { signs: "+-" }, "속도 오차");
+        const pw = m.add("pid", c(2), 40, { mode: "PI", Kp: r4(gQ.Kpw), Ki: r4(gQ.Kiw), lo: -Iq, hi: Iq }, "속도 PI → iq*");
+        const idc = m.add("step", c(2), 170, { t0: 0.6, v0: 0, v1: -(+(0.6 * Q.Imax).toPrecision(3)) }, "id* (0.6 s 에 음으로)");
+        const mo = m.add("pmsm", c(4), 40, {}, "PMSM");
+        const sc1 = m.add("scope", c(0), 320, { name: "속도", rpm: true });
+        const sc2 = m.add("scope", c(1), 320, { name: "dq 전류 [A]" });
+        const sc3 = m.add("scope", c(2), 320, { name: "토크·전압" });
+        m.w(ref, 0, s1, 0); m.w(s1, 0, pw, 0); m.w(idc, 0, mo, 0); m.w(pw, 0, mo, 1); m.w(mo, 0, s1, 1);
+        m.w(ref, 0, sc1, 0); m.w(mo, 0, sc1, 1); m.w(idc, 0, sc2, 0); m.w(mo, 3, sc2, 1); m.w(mo, 4, sc2, 2); m.w(mo, 2, sc3, 0); m.w(mo, 5, sc3, 1);
       };
     }
     T["빈 화면"] = () => {};
     return T;
   }
 
-  const api = { DEF, Diagram, Runner, templates, insOf, outsOf, titleOf, RPM };
+  // 템플릿 이름 → 전동기 계열 (dc / bldc / im / pmsm / all)
+  const familyOf = (name) => (name.startsWith("BLDC:") ? "bldc" : name.startsWith("유도전동기:") ? "im" :
+    name.startsWith("PMSM:") ? "pmsm" : name === "빈 화면" ? "all" : "dc");
+
+  const api = { DEF, Diagram, Runner, templates, familyOf, insOf, outsOf, titleOf, RPM };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.Blocks = api;
 })(this);

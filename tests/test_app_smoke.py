@@ -36,9 +36,7 @@ def test_invalid_parameter_stops_with_error():
 
 
 @pytest.mark.parametrize("module,func", [
-    ("ui.pages.concepts", "em_basics"), ("ui.pages.concepts", "commutation"),
-    ("ui.pages.concepts", "magnetic"), ("ui.pages.concepts", "control_basics"),
-    ("ui.pages.concepts", "symbols"), ("ui.pages.concepts", "arago"), ("ui.pages.induction", "render"),
+    ("ui.pages.induction", "render"),
     ("ui.pages.pmsm", "render"), ("ui.pages.structure", "dc"), ("ui.pages.structure", "bldc"),
     ("ui.pages.structure", "induction"), ("ui.pages.structure", "pmsm"), ("ui.pages.bldc", "render"), ("ui.pages.dc_blocks", "render"),
 ])

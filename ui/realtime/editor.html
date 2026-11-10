@@ -77,7 +77,11 @@ DEF.motor.params.kind.v = CFG.defaultMotor;
 DEF.chopper.params.Vdc.v = CFG.ctrl.V;
 const env = { motors: CFG.motors, defaultMotor: CFG.defaultMotor, ctrl: CFG.ctrl, bldc: CFG.bldc, im: CFG.im, pmsm: CFG.pmsm };
 const TPL = Blocks.templates(env);
-const STORE = "dcmotor-block-diagram-v1";
+// 선택한 전동기 계열(dc/bldc/im/pmsm)의 템플릿·블록만 보여 주고, 만든 구조도 계열마다 따로 저장
+const FOCUS = CFG.focus || "dc";
+const STORE = "dcmotor-block-diagram-v1" + (FOCUS === "dc" ? "" : "-" + FOCUS);
+const FIRST_TPL = { dc: "속도·전류 이중 루프 (PI-PI) + E 피드포워드", bldc: "BLDC: 속도·전류 이중 루프 (PI-PI) + E 피드포워드",
+  im: "유도전동기: 벡터 제어 (속도 PI → iq*)", pmsm: "PMSM: 벡터 제어 (id = 0, 속도 PI → iq*)" }[FOCUS];
 const dg = new Diagram();
 const runner = new Runner(dg, env);
 let sel = null;          // {kind: "block"|"wire", id}
@@ -233,8 +237,12 @@ const PALETTE = [
   ["신호원", [["const", "상수", {}], ["const", "속도 지령 (rpm)", { value: 1000, rpm: true }], ["step", "계단", {}], ["square", "사각파", {}], ["sine", "사인파", {}]]],
   ["연산", [["sum", "합산점 Σ (+−)", {}], ["sum", "합산점 Σ (++)", { signs: "++" }], ["gain", "게인 K", {}], ["limit", "리미터", {}], ["integ", "적분기 1/s", {}], ["lpf", "1차 지연 필터", {}]]],
   ["제어기", [["pid", "P 제어기", { mode: "P", Ki: 0 }], ["pid", "PI 제어기", { mode: "PI" }], ["pid", "PID 제어기", { mode: "PID", Kd: 0.01 }]]],
-  ["전력·전동기", [["chopper", "초퍼 (DC용)", {}], ["motor", "DC 전동기", {}], ["bldc", "BLDC 전동기 (인버터 포함)", {}],
-    ["im", "유도전동기 (벡터 입력)", { mode: "벡터" }], ["im", "유도전동기 (V/f 입력)", { mode: "V/f" }], ["pmsm", "PMSM (dq 전류 입력)", {}]]],
+  ["전력·전동기", {
+    dc: [["chopper", "초퍼", {}], ["motor", "DC 전동기", {}]],
+    bldc: [["bldc", "BLDC 전동기 (인버터 포함)", {}]],
+    im: [["im", "유도전동기 (벡터 입력)", { mode: "벡터" }], ["im", "유도전동기 (V/f 입력)", { mode: "V/f" }]],
+    pmsm: [["pmsm", "PMSM (dq 전류 입력)", {}]],
+  }[FOCUS]],
   ["관측", [["scope", "스코프", {}], ["display", "숫자 표시", {}]]],
 ];
 function freeSpot(type, p) {
@@ -368,7 +376,8 @@ function renderStatus() {
 }
 
 // ---------------- 도구 막대 ----------------
-Object.keys(TPL).forEach((n) => { const o = document.createElement("option"); o.textContent = n; $("tpl").appendChild(o); });
+Object.keys(TPL).filter((n) => [FOCUS, "all"].includes(Blocks.familyOf(n))).forEach((n) => {
+  const o = document.createElement("option"); o.textContent = n; $("tpl").appendChild(o); });
 $("loadTpl").onclick = () => {
   if (dg.blocks.length && !confirm("지금 화면의 블록을 지우고 템플릿을 불러올까요?")) return;
   dg.clear(); dg.nid = 1; TPL[$("tpl").value](dg); sel = null; restart(); render(); layoutSvg(true);
@@ -387,7 +396,7 @@ $("imp").onclick = () => {
 };
 
 // ---------------- 실행 루프 ----------------
-if (!loadSaved()) TPL["속도·전류 이중 루프 (PI-PI) + E 피드포워드"](dg);
+if (!loadSaved()) TPL[FIRST_TPL](dg);
 render(); layoutSvg(true);
 let last = performance.now(), nextSample = 0, lastDisp = 0;
 function frame(now) {

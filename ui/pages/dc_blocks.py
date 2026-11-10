@@ -18,19 +18,29 @@ def render():
     st.title("🧩 제어 블록 편집기")
     st.caption("블록을 끌어다 놓고 선으로 이어 제어 구조를 직접 만들고, 바로 실시간으로 돌려 봅니다. "
                "전류 제어기만, 속도 제어기만, P/PI/PID 바꾸기, 리미터·필터 추가처럼 자유롭게 바꿀 수 있습니다. "
-               "전동기 블록(DC · BLDC · 유도전동기 · PMSM)은 각 시뮬레이터 페이지의 파라미터 설정 값을 씁니다. "
-               "템플릿 목록에서 'BLDC:', '유도전동기:', 'PMSM:' 으로 시작하는 항목이 각 전동기용입니다.")
+               "위에서 전동기 종류(DC · BLDC · 유도전동기 · PMSM)를 고르면 그 전동기의 블록과 템플릿으로 바뀝니다.")
     labels = [v[0] for v in VARIANTS]
     ss = st.session_state
     last = ss.get("_keep_motor_choice", "타여자")
-    default = last if last in labels else "타여자"
-    if last == "복권":
-        default = "차동 복권" if ss.get("_keep_p_sigma") == "차동 복권" else "가동 복권"
-    c = st.columns([2, 3])
-    pick = c[0].selectbox("템플릿과 새 전동기 블록의 기본 종류", labels, index=labels.index(default),
-                          key="blk_motor")
-    c[1].caption("전동기 블록마다 속성에서 종류를 따로 고를 수도 있습니다. 여기를 바꾸면 편집기가 다시 "
-                 "로드되지만, 만든 구조는 브라우저에 저장되어 그대로 남습니다.")
+    dc_default = ss.get("_keep_blk_motor") or (last if last in labels else "타여자")
+    if last == "복권" and "_keep_blk_motor" not in ss:
+        dc_default = "차동 복권" if ss.get("_keep_p_sigma") == "차동 복권" else "가동 복권"
+    families = {"직류 (DC) 전동기": "dc", "BLDC 전동기": "bldc", "유도전동기 (교류)": "im", "PMSM (교류 동기)": "pmsm"}
+    c = st.columns([2, 2, 3])
+    fl = list(families)
+    fam_label = c[0].selectbox("전동기 종류", fl, index=fl.index(ss.get("_keep_blk_family", fl[0])), key="blk_family")
+    ss["_keep_blk_family"] = fam_label
+    focus = families[fam_label]
+    if focus == "dc":
+        pick = c[1].selectbox("DC 여자 방식", labels, index=labels.index(dc_default), key="blk_motor")
+        ss["_keep_blk_motor"] = pick
+        c[2].caption("템플릿과 새 DC 전동기 블록에 쓰는 여자 방식입니다. 블록마다 속성에서 따로 바꿀 수도 있습니다. "
+                     "파라미터는 DC 전동기 시뮬레이터 페이지 값을 씁니다.")
+    else:
+        pick = dc_default
+        page = {"bldc": "BLDC 전동기 시뮬레이터", "im": "유도전동기 시뮬레이터", "pmsm": "PMSM 시뮬레이터"}[focus]
+        c[1].caption(f"파라미터는 **{page}** 페이지의 설정 값을 씁니다.")
+        c[2].caption("전동기 종류를 바꾸면 그 전동기용 템플릿과 블록이 나타나고, 만든 구조는 종류마다 브라우저에 따로 저장됩니다.")
     models = {lab: build(lab) for lab in labels}
     motors = {lab: _motor_cfg(m) for lab, m in models.items()}
     m = models[pick]
@@ -50,7 +60,7 @@ def render():
     im_env = {"p": imc["p"], "TL": float(imm.p["TL"]), "Ilim": 2 * 2 ** 0.5 * float(imm.p["I_rated"]),
               "idRated": (2 / 3) ** 0.5 * imm.p["V"] / (2 * 3.141592653589793 * imm.p["f"] * Ls)}
     pm_env = {"p": pmc["p"], "TL": float(pmm.p["TL"]), "Imax": float(pmm.p["Imax"]), "nBase": pmc["nBase"]}
-    realtime.render(realtime.editor_html(motors, pick, ctrl, bldc, im_env, pm_env), height=1180)
+    realtime.render(realtime.editor_html(motors, pick, ctrl, bldc, im_env, pm_env, focus), height=1180)
     with st.expander("블록 설명과 구성 팁", expanded=False):
         st.markdown("""
 - **신호원**: 상수(실행 중 값 변경 = 계단), 계단(지정 시각), 사각파(반복 계단), 사인파. "rpm 으로 입력"을 켜면 rad/s 로 바꿔 내보냅니다.

@@ -26,7 +26,6 @@ def _build(template, config):
     html = html.replace("/*BLDC*/", _read("bldc_engine.js"))
     html = html.replace("/*AC*/", _read("ac_engine.js"))
     html = html.replace("/*ACDRAW*/", _read("ac_draw.js"))
-    html = html.replace("/*ARAGO*/", _read("arago_engine.js"))
     return html.replace("/*CONFIG*/", json.dumps(config))
 
 
@@ -76,10 +75,12 @@ def render(html, height):
         components.html(html, height=height, scrolling=False)
 
 
-def editor_html(motors, default_motor, ctrl, bldc=None, im=None, pmsm=None):
+def editor_html(motors, default_motor, ctrl, bldc=None, im=None, pmsm=None, focus="dc"):
     """제어 블록 편집기. motors: DC 전동기 {이름: {type, sigma, p, V, Vf, Rfx}},
-    ctrl: DC 템플릿 게인 계산용, bldc / im / pmsm: 각 전동기 블록·템플릿용 파라미터."""
-    cfg = {"motors": motors, "defaultMotor": default_motor, "ctrl": ctrl, "bldc": bldc, "im": im, "pmsm": pmsm}
+    ctrl: DC 템플릿 게인 계산용, bldc / im / pmsm: 각 전동기 블록·템플릿용 파라미터,
+    focus: 화면에 보일 전동기 계열 (dc / bldc / im / pmsm)."""
+    cfg = {"motors": motors, "defaultMotor": default_motor, "ctrl": ctrl, "bldc": bldc, "im": im, "pmsm": pmsm,
+           "focus": focus}
     return _build("editor.html", cfg)
 
 
@@ -141,6 +142,3 @@ def pmsm_principle_html(model):
 def pmsm_control_html(model):
     return _build("pmsm_control.html", _pmsm_cfg(model))
 
-
-def arago_html():
-    return _build("arago.html", {})
