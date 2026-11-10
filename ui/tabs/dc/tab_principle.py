@@ -9,15 +9,6 @@ from ui.diagrams import wiring_diagram
 from ui.plots import info_metric, style
 
 
-def _equations():
-    st.markdown("**핵심 수식**")
-    st.latex(r"E = K\phi\,\omega \qquad T_e = K\phi\, I_a")
-    st.latex(r"V = I_a R_a + L_a \frac{dI_a}{dt} + E")
-    st.latex(r"J \frac{d\omega}{dt} = T_e - B\omega - T_L")
-    st.caption("Kφ [V·s/rad = N·m/A], ω [rad/s], Ia [A], T [N·m]. "
-               "두 식 E = Kφω 와 T = Kφ·Ia 의 Kφ 는 같은 값입니다 (에너지 보존: E·Ia = Te·ω).")
-
-
 def _animation(model, params):
     st.markdown("#### 실시간 단면 애니메이션")
     st.caption("계산이 브라우저에서 실시간으로 돌아갑니다. 슬라이더를 움직이면 **지금 상태에서 "
@@ -68,15 +59,11 @@ def torque_ripple_section():
 
 
 def render(model, params):
-    left, right = st.columns([3, 1])
-    with right:
-        _equations()
-    with left:
-        st.info(f"선택한 전동기: **{getattr(model, 'variant', model.name)}** · "
-                "여기서 보는 모든 값은 위 파라미터 설정 기준입니다.")
-        if model.excitation == "series":
-            st.warning("직권 전동기는 부하 토크를 0 근처로 내리면 속도가 매우 높아집니다 "
-                       "(무부하 폭주). 슬라이더로 직접 확인해 보세요.")
+    st.info(f"선택한 전동기: **{getattr(model, 'variant', model.name)}** · "
+            "여기서 보는 모든 값은 위 파라미터 설정 기준입니다.")
+    if model.excitation == "series":
+        st.warning("직권 전동기는 부하 토크를 0 근처로 내리면 속도가 매우 높아집니다 "
+                   "(무부하 폭주). 슬라이더로 직접 확인해 보세요.")
     _animation(model, params)
     st.divider()
     torque_ripple_section()

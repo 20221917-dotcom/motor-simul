@@ -33,18 +33,10 @@ def _items(d):
 
 # ---------------------------------------------------------------- ① 원리
 def tab_principle(m, params):
-    left, right = st.columns([3, 1])
-    with left:
-        st.markdown("#### 실시간 동작 (6스텝 정류)")
-        st.caption("홀 센서가 회전자 위치를 읽고, 그 코드에 따라 인버터 스위치 2개를 켜서 두 상에 전류를 흘립니다. "
-                   "60°(전기각)마다 통전 상이 바뀌며 고정자 자계가 한 칸씩 앞으로 뛰어 회전자를 끌고 갑니다. "
-                   "슬라이더를 바꾸면 현재 상태에서 바로 반응합니다.")
-    with right:
-        st.markdown("**핵심 수식**")
-        st.latex(r"L\frac{di_x}{dt} = v_x - v_n - R\,i_x - e_x")
-        st.latex(r"e_x = k_e\,\omega_m\, f(\theta_e - \varphi_x)")
-        st.latex(r"T_e = \frac{e_a i_a + e_b i_b + e_c i_c}{\omega_m}")
-        st.latex(r"\theta_e = \tfrac{P}{2}\,\theta_m")
+    st.markdown("#### 실시간 동작 (6스텝 정류)")
+    st.caption("홀 센서가 회전자 위치를 읽고, 그 코드에 따라 인버터 스위치 2개를 켜서 두 상에 전류를 흘립니다. "
+               "60°(전기각)마다 통전 상이 바뀌며 고정자 자계가 한 칸씩 앞으로 뛰어 회전자를 끌고 갑니다. "
+               "슬라이더를 바꾸면 현재 상태에서 바로 반응합니다.")
     realtime.render(realtime.bldc_principle_html(params), height=1180)
     with st.expander("그림 읽는 법 · DC 전동기와 비교", expanded=False):
         st.markdown("""

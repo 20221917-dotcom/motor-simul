@@ -22,16 +22,9 @@ ASSUMPTIONS = ("**모델 가정** · 3상 평형, 농형(회전자 단락), 선�
 
 # ---------------------------------------------------------------- ① 원리
 def tab_principle(m, params):
-    left, right = st.columns([3, 1])
-    with left:
-        st.markdown("#### 실시간 회전자계와 슬립")
-        st.caption("3상 전류가 만드는 자계가 **동기속도 ns = 120f/P** 로 돕니다. 회전자가 그보다 느리게 돌면 회전자 도체가 자계를 "
-                   "끊어 전류가 유도되고, 그 전류가 자계와 만나 토크가 생깁니다. 주파수·전압·부하를 바꾸면 바로 반응합니다.")
-    with right:
-        st.markdown("**핵심 수식**")
-        st.latex(r"n_s = \frac{120 f}{P},\quad s = \frac{n_s - n}{n_s}")
-        st.latex(r"f_r = s\,f")
-        st.latex(r"T = \frac{3}{\omega_s}\,|I_2'|^2\frac{R_r'}{s}")
+    st.markdown("#### 실시간 회전자계와 슬립")
+    st.caption("3상 전류가 만드는 자계가 **동기속도 ns = 120f/P** 로 돕니다. 회전자가 그보다 느리게 돌면 회전자 도체가 자계를 "
+               "끊어 전류가 유도되고, 그 전류가 자계와 만나 토크가 생깁니다. 주파수·전압·부하를 바꾸면 바로 반응합니다.")
     realtime.render(realtime.im_principle_html(m), height=760)
     with st.expander("그림 읽는 법", expanded=False):
         st.markdown("""

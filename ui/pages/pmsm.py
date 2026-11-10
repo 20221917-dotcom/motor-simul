@@ -19,16 +19,9 @@ ASSUMPTIONS = ("**모델 가정** · 정현파 역기전력, 3상 평형, 선형
 
 # ---------------------------------------------------------------- ① 원리
 def tab_principle(m, params):
-    left, right = st.columns([3, 1])
-    with left:
-        st.markdown("#### 실시간 벡터 제어 (dq 축)")
-        st.caption("회전자 자석 방향을 d축, 그와 90° 방향을 q축으로 두면 정현파 3상 전류가 dq 좌표에서는 **직류**가 됩니다. "
-                   "q축 전류 iq 가 토크를, d축 전류 id 가 자속(약계자·릴럭턴스 토크)을 담당합니다. 지령을 바꾸면 바로 반응합니다.")
-    with right:
-        st.markdown("**핵심 수식**")
-        st.latex(r"v_d = R_s i_d + L_d \dot i_d - \omega_e L_q i_q")
-        st.latex(r"v_q = R_s i_q + L_q \dot i_q + \omega_e (L_d i_d + \lambda_f)")
-        st.latex(r"T_e = \tfrac{3}{2}\tfrac{P}{2}\left[\lambda_f i_q + (L_d - L_q) i_d i_q\right]")
+    st.markdown("#### 실시간 벡터 제어 (dq 축)")
+    st.caption("회전자 자석 방향을 d축, 그와 90° 방향을 q축으로 두면 정현파 3상 전류가 dq 좌표에서는 **직류**가 됩니다. "
+               "q축 전류 iq 가 토크를, d축 전류 id 가 자속(약계자·릴럭턴스 토크)을 담당합니다. 지령을 바꾸면 바로 반응합니다.")
     realtime.render(realtime.pmsm_principle_html(m), height=800)
     st.divider()
     st.markdown("#### 구조와 특징 · DC / BLDC 와 비교")
