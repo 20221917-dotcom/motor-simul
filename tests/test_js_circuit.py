@@ -155,3 +155,19 @@ inv.p.mode = "정지 (모든 스위치 꺼짐)"; for (let k = 0; k < 20000; k++)
 console.log(JSON.stringify({ lv: [...lv].sort((a, b) => a - b), off: s.phaseI(inv.id) }));""")
     assert set(r["lv"]) <= {-300, 0, 300} and {-300, 300} <= set(r["lv"])    # 6스텝 선간 전압: +Vdc, 0, −Vdc
     assert all(abs(i) < 1e-3 for i in r["off"])                                # 정지하면 전류 0 (RL 부하 에너지 소멸 후)
+
+
+def test_h_bridge_unipolar_bipolar_average_and_reverse():
+    r = js("""const out = {};
+for (const mode of ["유니폴라", "바이폴라"]) for (const m of [0.5, -0.5]) {
+  const [sc, s] = tpl("H-브리지 4상한 초퍼: DC 전동기 정·역회전"); const hb = by(sc, "hbr")[0]; hb.p.mode = mode; hb.p.m = m;
+  let vs = 0, n = 0, lo = 1e9, hi = -1e9;
+  for (let k = 0; k < 600000; k++) { s.step(2e-6); if (s.t > 1.1) { const i = s.phaseI(hb.id)[0]; vs += s.lineV(hb.id)[0]; n++; lo = Math.min(lo, i); hi = Math.max(hi, i); } }
+  out[mode + m] = { v: vs / n, w: s.st[by(sc, "motor")[0].id].w, rip: hi - lo, err: s.err };
+}
+console.log(JSON.stringify(out));""")
+    for k, v in r.items():
+        assert v["err"] == ""
+        assert abs(v["v"]) == pytest.approx(70, rel=0.01)
+    assert r["유니폴라0.5"]["w"] > 0 > r["유니폴라-0.5"]["w"]
+    assert r["유니폴라0.5"]["rip"] < 0.5 * r["바이폴라0.5"]["rip"]

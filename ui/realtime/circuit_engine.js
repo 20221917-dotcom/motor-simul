@@ -62,6 +62,15 @@
             desc: "직류(P·N)를 3상 교류(a·b·c)로 바꾸는 인버터입니다. 상마다 위·아래 스위치 한 쌍이 번갈아 켜져 " +
                   "출력 단자를 P 또는 N 에 잇습니다 (스위치는 역병렬 다이오드를 포함해 양방향으로 흐른다고 봄). " +
                   "사인파 PWM 은 사인 지령과 삼각파를 비교하고, 6스텝은 반 주기씩 켭니다. 그림의 초록 칸이 켜진 스위치입니다." },
+    hbr: { name: "H-브리지 초퍼",
+           pins: [[0, -2], [0, 2], [6, -2], [6, 2]], pinNames: ["P (+)", "N (−)", "A", "B"], box: [0.8, -3, 5.2, 3],
+           params: { mode: { label: "PWM 방식", type: "select", v: "유니폴라", options: ["유니폴라", "바이폴라", "정지 (모든 스위치 꺼짐)"] },
+                     m: { label: "전압 지령 m = Va*/Vdc (−1 ~ 1)", v: 0.5, unit: "", min: -1, max: 1 },
+                     fc: { label: "스위칭(반송파) 주파수", v: 5000, unit: "Hz", min: 1 },
+                     Ron: { label: "스위치 도통 저항", v: 0.01, unit: "Ω", min: 1e-6 } },
+           desc: "4상한 초퍼 (T1·T2 = A 레그, T3·T4 = B 레그). 출력 전압 Va = VA − VB 의 평균이 m·Vdc 가 되도록 스위칭합니다. " +
+                 "바이폴라: 대각 쌍 (T1·T4) ↔ (T2·T3) 를 번갈아 켜서 ±Vdc. 유니폴라: A 레그는 m, B 레그는 −m 을 삼각파와 비교해 +Vdc ↔ 0. " +
+                 "m 을 음수로 하면 역방향 전압 (역회전·회생)." },
     ammeter: { name: "전류계", params: {}, desc: "내부 저항 0. 화살표(a → b) 방향 전류를 재고, 순시값과 실효값을 보여 줍니다." },
     voltmeter: { name: "전압계", params: {}, desc: "내부 저항 무한대. + 단자와 − 단자 사이 전압을 재고, 순시값과 실효값을 보여 줍니다." },
     ground: { name: "접지", params: {}, one: true, desc: "전압 0 V 기준점입니다. 회로마다 하나씩 두면 전압 색이 알기 쉬워집니다." },
@@ -190,7 +199,7 @@
       this.bIdx = new Map(); let nbr = 0;
       for (const x of nb) { this.bIdx.set(x.e.id, nbr); nbr += NBR(x.e.type); }
       this.N = this.net.nNodes - 1 + nbr;
-      this.It = {};
+      this.It = {}; this.Iout = {};
       for (const x of this.net.elems) if (!this.st[x.e.id]) this.st[x.e.id] = { vc: 0, il: 0, w: 0, th: 0, on: false, ms: 0, ms2: 0, g: [0, 0, 0] };
       this.V = new Array(this.net.nNodes).fill(0);
     }
@@ -207,6 +216,12 @@
     }
     // 인버터 상 k 의 위 스위치가 켜졌는지 (1 = 위 켜짐, 0 = 아래 켜짐, −1 = 둘 다 꺼짐)
     gate(e, t, k) {
+      if (e.type === "hbr") {
+        const p = e.p, ph = (t * p.fc) % 1, tri = ph < 0.5 ? 4 * ph - 1 : 3 - 4 * ph;
+        if (String(p.mode).startsWith("정지")) return -1;
+        if (k === 0) return p.m > tri ? 1 : 0;
+        return String(p.mode).startsWith("바이") ? (p.m > tri ? 0 : 1) : (-p.m > tri ? 1 : 0);
+      }
       const p = e.p, th = 2 * Math.PI * p.f * t - k * 2 * Math.PI / 3;
       if (String(p.mode).startsWith("정지")) return -1;
       if (String(p.mode).startsWith("6스텝")) return Math.sin(th) >= 0 ? 1 : 0;
@@ -254,9 +269,9 @@
               }
               break;
             }
-            case "inv3": {
+            case "inv3": case "hbr": {
               const P = x.nodes[0], Nn = x.nodes[1], gon = 1 / p.Ron;
-              for (let q = 0; q < 3; q++) {
+              for (let q = 0; q < x.nodes.length - 2; q++) {
                 const gt = this.gate(e, t, q), X = x.nodes[q + 2];
                 G(P, X, gt === 1 ? gon : GOFF); G(X, Nn, gt === 0 ? gon : GOFF);
               }
@@ -307,16 +322,17 @@
           case "vac3": {
             const b0 = n1 + this.bIdx.get(e.id), ip = [z[b0], z[b0 + 1], z[b0 + 2]];
             this.It[e.id] = [ip[0] + ip[1] + ip[2], -ip[0], -ip[1], -ip[2]];        // 단자로 들어가는 전류
+            this.Iout[e.id] = ip;
             i = Math.max(...ip.map(Math.abs)); break;
           }
-          case "inv3": {
-            const P = x.nodes[0], Nn = x.nodes[1], gon = 1 / p.Ron, It = [0, 0, 0, 0, 0];
-            for (let q = 0; q < 3; q++) {
+          case "inv3": case "hbr": {
+            const P = x.nodes[0], Nn = x.nodes[1], gon = 1 / p.Ron, nl = x.nodes.length - 2, It = new Array(nl + 2).fill(0);
+            for (let q = 0; q < nl; q++) {
               const gt = this.gate(e, t, q), X = x.nodes[q + 2];
               const iu = (gt === 1 ? gon : GOFF) * (V[P] - V[X]), il = (gt === 0 ? gon : GOFF) * (V[X] - V[Nn]);
               It[0] += iu; It[1] -= il; It[q + 2] = il - iu; s.g[q] = gt;
             }
-            this.It[e.id] = It; i = It[0]; break;
+            this.It[e.id] = It; this.Iout[e.id] = It.slice(2).map((v) => -v); i = It[0]; break;
           }
           default: i = z[n1 + this.bIdx.get(e.id)];
         }
@@ -342,10 +358,14 @@
       const v = this.V[x.a] - this.V[x.b];
       return DEF[x.e.type].src ? -v : v;
     }
-    // 다단자 부품: a·b·c 단자에서 밖으로 나가는 상전류, 선간 전압 [Vab, Vbc, Vca]
-    phaseI(id) { const It = (this.It || {})[id]; if (!It) return [0, 0, 0]; const o = It.length - 3; return [-It[o], -It[o + 1], -It[o + 2]]; }
+    // 다단자 부품: 출력 단자(a·b·c 또는 A·B)에서 밖으로 나가는 전류, 선간 전압 ([Vab, Vbc, Vca] 또는 [VAB])
+    phaseI(id) {
+      const io = (this.Iout || {})[id]; if (io) return io;
+      const e = this.sc.elems.find((q) => q.id === id); return e && e.type === "hbr" ? [0, 0] : [0, 0, 0];
+    }
     lineV(id) {
       const x = this.net && this.net.elems.find((q) => q.e.id === id); if (!x) return [0, 0, 0];
+      if (x.e.type === "hbr") return [(this.V[x.nodes[2]] || 0) - (this.V[x.nodes[3]] || 0)];
       const o = x.nodes.length - 3, v = [0, 1, 2].map((k) => this.V[x.nodes[o + k]] || 0);
       return [v[0] - v[1], v[1] - v[2], v[2] - v[0]];
     }
@@ -512,6 +532,15 @@
       sc.wire(15, 8, 17, 8); sc.wire(17, 8, 17, 4); sc.wire(15, 10, 17, 10); sc.wire(15, 12, 17, 12); sc.wire(17, 12, 17, 16);
       for (const y of [4, 10, 16]) { sc.add("resistor", 17, y, 0, { R: 10 }); sc.add("inductor", 21, y, 0, { L: 0.02 }); sc.wire(25, y, 29, y); }
       sc.wire(29, 4, 29, 16);
+      sc.add("ground", 3, 12);
+    },
+    "H-브리지 4상한 초퍼: DC 전동기 정·역회전": (sc) => {
+      sc.add("vdc", 1, 12, 3, { V: 140 });
+      sc.wire(1, 8, 5, 8); sc.wire(1, 12, 5, 12);
+      sc.add("hbr", 5, 10, 0, { m: 0.5, mode: "유니폴라", fc: 5000 });
+      sc.add("ammeter", 11, 8, 0);
+      sc.add("motor", 15, 8, 1, { Ra: 0.5, La: 0.005, K: 0.4058, J: 0.0018, B: 0.0001, TL: 2 });
+      sc.wire(15, 12, 11, 12);
       sc.add("ground", 3, 12);
     },
     "빈 화면": () => {},

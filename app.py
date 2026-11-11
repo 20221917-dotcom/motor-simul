@@ -1,6 +1,6 @@
 """전동기 학습용 시뮬레이터 — 실행: streamlit run app.py
 
-왼쪽 사이드바는 메뉴(직류 전동기 / BLDC 전동기 / 교류 전동기(유도·PMSM) / 전동기 구조 / 제어 실습 / 회로 실습)이고,
+왼쪽 사이드바는 메뉴(직류 전동기 / BLDC 전동기 / 교류 전동기(유도·PMSM) / 전동기 구조 / 제어 실습 / 회로 실습 / 강의 실습)이고,
 각 페이지의 파라미터 설정은 메인 화면 위쪽에 있다.
 새 전동기 페이지를 추가할 때는 ui/pages/ 에 render 함수를 만들고 아래 목록에 넣으면 된다.
 """
@@ -15,7 +15,7 @@ import streamlit as st
 # 모델)이 등록되지 않아 KeyError 가 납니다. 소스 파일이 바뀐 것을 감지하면 프로젝트 모듈을
 # sys.modules 에서 지워 다시 불러오게 합니다.
 _ROOT = pathlib.Path(__file__).resolve().parent
-_PKGS = ("core", "motors", "control", "concepts", "ui")
+_PKGS = ("core", "motors", "control", "concepts", "lectures", "ui")
 
 
 def _refresh_project_modules():
@@ -30,7 +30,8 @@ def _refresh_project_modules():
 
 _refresh_project_modules()
 
-from ui.pages import bldc, circuit, dc_blocks, dc_sim, induction, pmsm, structure
+from ui.pages import (bldc, circuit, dc_blocks, dc_sim, induction, lecture_ch1, lecture_ch2, lecture_ch3,
+                      lecture_ch4, pmsm, structure)
 
 st.set_page_config(page_title="전동기 학습 시뮬레이터", page_icon="⚙️", layout="wide")
 
@@ -53,6 +54,12 @@ pages = {
     ],
     "제어 실습": [
         st.Page(dc_blocks.render, title="제어 블록 편집기 (DC·BLDC·교류)", icon="🧩", url_path="blocks"),
+    ],
+    "강의 실습 (모터제어)": [
+        st.Page(lecture_ch1.render, title="1장 전동기의 기본 원리", icon="📘", url_path="lecture-1"),
+        st.Page(lecture_ch2.render, title="2장 직류 전동기의 토크 제어", icon="📗", url_path="lecture-2"),
+        st.Page(lecture_ch3.render, title="3장 BLDC 전동기", icon="📙", url_path="lecture-3"),
+        st.Page(lecture_ch4.render, title="4장 교류 전동기의 회전 원리", icon="📕", url_path="lecture-4"),
     ],
     "회로 실습": [
         st.Page(circuit.render, title="회로 시뮬레이터", icon="🔌", url_path="circuit"),
