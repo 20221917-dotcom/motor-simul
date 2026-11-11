@@ -6,7 +6,7 @@ from ui import realtime
 from ui.pages.lecture_common import check, link, ref
 
 # 각 탭 iframe 높이 [px]
-HEIGHTS = {"types": 563, "steady": 1260, "transient": 1311, "basics": 2542, "current": 1106, "speed": 1591, "chopper": 2068}
+HEIGHTS = {"types": 563, "steady": 1260, "transient": 1355, "basics": 2693, "current": 1175, "speed": 1591, "chopper": 2068}
 
 
 def _lab(tab):

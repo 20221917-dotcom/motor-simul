@@ -5,7 +5,7 @@ import streamlit as st
 from ui import realtime
 from ui.pages.lecture_common import check, link, ref
 
-HEIGHTS = {"structure": 1244, "rotating": 1267, "emf": 946, "equivalent": 735, "characteristics": 1321, "rotor": 1173, "tests": 377, "speed": 2115, "synchronous": 1297}
+HEIGHTS = {"structure": 1275, "rotating": 1316, "emf": 1043, "equivalent": 716, "characteristics": 1369, "rotor": 1173, "tests": 377, "speed": 2115, "synchronous": 1352}
 
 
 def _lab(tab):

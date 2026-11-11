@@ -9,7 +9,7 @@ from ui.pages.lecture_common import check, link, ref
 
 RPM = 60 / (2 * math.pi)
 # 각 탭 iframe 높이 [px] (브라우저에서 잰 내용 높이 + 여유)
-HEIGHTS = {"principle": 551, "magnetic": 1057, "force": 1868, "double": 613, "load": 1211, "quadrant": 547}
+HEIGHTS = {"principle": 600, "magnetic": 1105, "force": 2005, "double": 658, "load": 1354, "quadrant": 547}
 
 
 def _lab(tab, height):

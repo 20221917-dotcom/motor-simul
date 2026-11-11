@@ -5,7 +5,7 @@ import streamlit as st
 from ui import realtime
 from ui.pages.lecture_common import check, link, ref
 
-HEIGHTS = {"shapes": 745, "sixstep": 1423, "commutation": 1123, "pwm": 1823, "sensorless": 660}
+HEIGHTS = {"shapes": 790, "sixstep": 1423, "commutation": 1179, "pwm": 1872, "sensorless": 705}
 
 
 def _lab(tab):

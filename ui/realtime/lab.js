@@ -300,10 +300,11 @@
       legend: { orientation: "h", y: -0.22, x: 0, yanchor: "top", font: { size: 11 } }, hovermode: "x unified",
       xaxis: Object.assign({}, AX), yaxis: Object.assign({}, AX), colorway: COL,
     };
+    const baseLegend = base.legend, baseMargin = base.margin;
     const lay = Object.assign(base, layout);
     for (const k of Object.keys(layout)) if (/^[xy]axis\d*$/.test(k)) lay[k] = Object.assign({}, AX, layout[k]);
-    if (layout.legend) lay.legend = Object.assign({}, base.legend, layout.legend);
-    if (layout.margin) lay.margin = Object.assign({}, base.margin, layout.margin);
+    if (layout.legend) lay.legend = Object.assign({}, baseLegend, layout.legend);
+    if (layout.margin) lay.margin = Object.assign({}, baseMargin, layout.margin);
     const nl = (lay.showlegend !== false) && traces.some((t) => t.showlegend !== false && t.name);
     if (nl && !layout.legend) lay.margin.b = Math.max(lay.margin.b, 70);
     // 숨겨진 탭(폭 0)에서 그리면 글자 폭을 0 으로 재서 범례가 겹침 → 보일 때 그림

@@ -116,7 +116,7 @@
   // ---------------------------------------------------------------- 그림
   function eqSVG(vals) {
     const o = svg.start(560, 200), yT = 60, yB = 170;
-    svg.circle(o, 20, yT, 5); svg.circle(o, 20, yB, 5); svg.text(o, 12, (yT + yB) / 2, "Vs", 13, "#222", "end");
+    svg.circle(o, 20, yT, 5); svg.circle(o, 20, yB, 5); svg.text(o, 20, (yT + yB) / 2 + 4, "Vs", 13, "#222", "middle");
     svg.line(o, 25, yT, 40, yT); svg.resistor(o, 40, yT, 120, yT); svg.inductor(o, 120, yT, 200, yT); svg.line(o, 200, yT, 330, yT);
     svg.inductor(o, 330, yT, 410, yT); svg.line(o, 410, yT, 440, yT); svg.resistor(o, 440, yT, 440, yB); svg.line(o, 25, yB, 440, yB);
     svg.inductor(o, 265, yT, 265, yB);
