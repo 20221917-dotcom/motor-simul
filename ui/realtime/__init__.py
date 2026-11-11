@@ -147,3 +147,16 @@ def pmsm_control_html(model):
 def circuit_html():
     """회로 시뮬레이터 (회로도 편집 + 전류 흐름)."""
     return _build("circuit.html", {})
+
+
+PLOTLY_SRC = "/app/static/plotly.min.js"     # Streamlit 정적 파일 (server.enableStaticServing)
+
+
+def lab_html(chapter, tab, config=None, plotly_src=None):
+    """강의 실습 탭 (브라우저 계산 + Plotly). chapter: 1~4, tab: 그 장 JS 의 탭 함수 이름."""
+    cfg = dict(config or {}, id=f"{chapter}-{tab}")
+    html = _read("lab.html").replace("/*CSS*/", _read("common.css"))
+    html = html.replace("/*PLOTLY*/", plotly_src or PLOTLY_SRC)
+    html = html.replace("/*LAB*/", _read("lab.js")).replace("/*CHAPTER*/", _read(f"lab_ch{chapter}.js"))
+    html = html.replace("/*CALL*/", f"LabCh{chapter}.{tab}")
+    return html.replace("/*CONFIG*/", json.dumps(cfg))
