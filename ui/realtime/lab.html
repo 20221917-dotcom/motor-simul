@@ -29,12 +29,28 @@ body { padding: 2px 4px 8px; }
 .info { background: #e8f1fb; color: #1c4e80; border-radius: 8px; padding: 8px 12px; font-size: 13px; }
 </style></head><body>
 <div id="root"></div>
-<script src="/*PLOTLY*/"></script>
 <script>/*LAB*/</script>
 <script>/*CHAPTER*/</script>
 <script>
 const CFG = /*CONFIG*/;
-const _tab = new Lab.Tab(document.getElementById("root"), CFG.id);
-try { /*CALL*/(_tab, CFG); } catch (e) { document.getElementById("root").insertAdjacentHTML("beforeend", "<pre>" + e.stack + "</pre>"); }
+function _run() {
+  const root = document.getElementById("root"); root.innerHTML = "";
+  const _tab = new Lab.Tab(root, CFG.id);
+  try { /*CALL*/(_tab, CFG); } catch (e) { root.insertAdjacentHTML("beforeend", "<pre>" + e.stack + "</pre>"); }
+}
+// Plotly: 앱 static 폴더(배포 위치에 따라 경로가 다름) → 공개 CDN 순서로 시도
+(function load(list) {
+  if (typeof Plotly !== "undefined" || !list.length) return _run();
+  const sc = document.createElement("script"); sc.src = list[0];
+  sc.onload = () => (typeof Plotly !== "undefined" ? _run() : load(list.slice(1)));
+  sc.onerror = () => { sc.remove(); load(list.slice(1)); };
+  document.head.appendChild(sc);
+})((function () {
+  const out = [], add = (u) => { try { u = new URL(u, document.baseURI).href; if (!out.includes(u)) out.push(u); } catch (e) {} };
+  try { add(new URL("app/static/plotly.min.js", window.parent.location.href).href); } catch (e) {}
+  add("app/static/plotly.min.js"); add("/app/static/plotly.min.js");
+  /*PLOTLY*/.forEach(add);
+  return out;
+})());
 </script>
 </body></html>

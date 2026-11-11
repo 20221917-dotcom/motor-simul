@@ -149,14 +149,16 @@ def circuit_html():
     return _build("circuit.html", {})
 
 
-PLOTLY_SRC = "/app/static/plotly.min.js"     # Streamlit 정적 파일 (server.enableStaticServing)
+# 앱 static 폴더(server.enableStaticServing)를 먼저 시도하고, 안 되면 아래 CDN 순서로 불러옴 (lab.html)
+PLOTLY_CDN = ["https://cdn.jsdelivr.net/npm/plotly.js-dist-min@3.0.1/plotly.min.js",
+              "https://cdnjs.cloudflare.com/ajax/libs/plotly.js/3.0.1/plotly.min.js"]
 
 
 def lab_html(chapter, tab, config=None, plotly_src=None):
     """강의 실습 탭 (브라우저 계산 + Plotly). chapter: 1~4, tab: 그 장 JS 의 탭 함수 이름."""
     cfg = dict(config or {}, id=f"{chapter}-{tab}")
     html = _read("lab.html").replace("/*CSS*/", _read("common.css"))
-    html = html.replace("/*PLOTLY*/", plotly_src or PLOTLY_SRC)
+    html = html.replace("/*PLOTLY*/", json.dumps([plotly_src] if plotly_src else PLOTLY_CDN))
     html = html.replace("/*LAB*/", _read("lab.js")).replace("/*CHAPTER*/", _read(f"lab_ch{chapter}.js"))
     html = html.replace("/*CALL*/", f"LabCh{chapter}.{tab}")
     return html.replace("/*CONFIG*/", json.dumps(cfg))
