@@ -220,3 +220,121 @@ def v_curve(Vs, Xs, P_load, Ef_range):
         r = sync_phasor(Vs, Ef[k], math.asin(sd[k]), Xs)
         I[k] = abs(r["I"]); pf[k] = r["pf"] * (1 if r["Q"] >= 0 else -1)   # Q > 0 이면 지상(부족여자)
     return I, pf
+
+
+# ---------------------------------------------------------------- 4.1 아라고의 원판 · 4.1.1 철손
+def arago(dv, sigma=5.8e7, B=0.5, t=2e-3, vc=40.0):
+    """원판과 자석의 상대 속도 Δv [m/s] 에 따른 와전류 제동력 (단위 면적당, 상대값): σ·t·B²·Δv / (1 + (Δv/vc)²).
+    vc: 와전류 자체의 자계가 자석 자계를 밀어내기 시작하는 속도 (최대 힘이 나는 상대 속도)."""
+    dv = np.asarray(dv, dtype=float)
+    return sigma * t * B * B * dv / (1 + (dv / vc) ** 2)
+
+
+def hysteresis_loop(Hmax, Hc, Bs, a=None, n=400):
+    """간단한 히스테리시스 루프: 올라가는 가지 B = Bs·tanh((H − Hc)/a), 내려가는 가지 B = Bs·tanh((H + Hc)/a)."""
+    a = a or max(Hc, 1.0)
+    H = np.linspace(-Hmax, Hmax, n)
+    up = Bs * np.tanh((H - Hc) / a)
+    dn = Bs * np.tanh((H + Hc) / a)
+    area = float(np.trapezoid(dn - up, H)) if hasattr(np, "trapezoid") else float(np.trapz(dn - up, H))
+    return H, up, dn, area
+
+
+def core_loss(f, Bm, thick_mm, kh=0.02, ke=0.6e-3, n_st=1.8):
+    """철손 [W/kg 상대값]: 히스테리시스 kh·f·Bm^n (주파수에 비례), 와전류 ke·f²·t²·Bm² (주파수·두께의 제곱)."""
+    f = np.asarray(f, dtype=float)
+    Ph = kh * f * Bm ** n_st
+    Pe = ke * (f * thick_mm) ** 2 * Bm ** 2
+    return Ph, Pe
+
+
+def winding_mmf(theta, q, mode="a상만"):
+    """분포권: 매극 매상 슬롯 수 q 개의 코일(전절권) 이 만드는 계단 모양 기자력과 그 기본파 (2극, 단위 전류).
+    mode="3상 합성" 이면 ia = 1, ib = ic = −1/2 순간의 3상 합성."""
+    th = np.asarray(theta, dtype=float)
+    slot = math.pi / (3 * q)                       # 슬롯 피치 (전기각)
+
+    def phase(shift):
+        F = np.zeros_like(th)
+        for k in range(q):
+            c = shift + (k - (q - 1) / 2) * slot      # 코일 중심
+            F += np.where(np.cos(th - c) >= 0, 0.5, -0.5) / q
+        return F
+    if mode == "a상만":
+        F = phase(0.0)
+    else:
+        F = phase(0.0) - 0.5 * phase(2 * math.pi / 3) - 0.5 * phase(4 * math.pi / 3)
+    # 기본파 성분 (푸리에)
+    a1 = 2 * np.mean(F * np.cos(th)); b1 = 2 * np.mean(F * np.sin(th))
+    fund = a1 * np.cos(th) + b1 * np.sin(th)
+    kd = math.sin(q * slot / 2) / (q * math.sin(slot / 2))
+    thd = float(np.sqrt(max(np.mean(F ** 2) - 0.5 * (a1 * a1 + b1 * b1), 0)) / math.sqrt(0.5 * (a1 * a1 + b1 * b1)))
+    return F, fund, kd, thd
+
+
+# ---------------------------------------------------------------- 4.1.6 심구형 도체 (표피 효과)
+def deep_bar_ratio(fr, h_mm=25.0, rho=2.8e-8):
+    """깊이 h 인 회전자 막대의 교류 저항 / 직류 저항 (표피 효과): ξ (sinh2ξ + sin2ξ)/(cosh2ξ − cos2ξ), ξ = h/δ."""
+    fr = np.maximum(np.asarray(fr, dtype=float), 1e-6)
+    delta = np.sqrt(2 * rho / (2 * math.pi * fr * 4e-7 * math.pi))
+    x = h_mm * 1e-3 / delta
+    x = np.minimum(x, 50)
+    return x * (np.sinh(2 * x) + np.sin(2 * x)) / (np.cosh(2 * x) - np.cos(2 * x))
+
+
+NEMA = {   # 2중 농형 파라미터로 흉내 낸 형식별 특성 (R_out, X_out, R_in, X_in), 단일 농형은 R_in 만
+    "A급 (일반, 저슬립)": dict(single=0.30),
+    "B급 (표준, 저기동전류)": dict(R_out=1.2, X_out=0.8, R_in=0.32, X_in=1.6),
+    "C급 (고기동토크)": dict(R_out=2.2, X_out=0.5, R_in=0.35, X_in=3.0),
+    "D급 (고저항, 고슬립)": dict(single=1.9),
+}
+
+
+def nema_curve(cls, s, M=None):
+    M = dict(IM, **(M or {}))
+    prm = NEMA[cls]
+    if "single" in prm:
+        r = im_circuit(s, dict(M, Rr=prm["single"]))
+        return r["T"], np.abs(r["I1"])
+    return double_cage_torque(s, M, prm["R_out"], prm["X_out"], prm["R_in"], prm["X_in"])
+
+
+# ---------------------------------------------------------------- 4.1.8 V/f 제어 (부스트, 슬립 주파수 폐루프)
+def vf_voltage(f, M=None, boost=0.0):
+    """V/f 패턴: V = V_boost + (V정격 − V_boost)·f/f정격, 정격 주파수 이상은 V정격."""
+    M = dict(IM, **(M or {}))
+    f = np.asarray(f, dtype=float)
+    return np.minimum(boost + (M["V"] - boost) * f / M["f"], M["V"])
+
+
+def vf_closed_loop(n_ref_steps, TL_steps, M=None, J=0.1, t_end=3.0, h=1e-3, fr_max=3.0, Kp=0.02, Ki=0.2, boost=0.0):
+    """일정 V/f + 슬립 주파수 제어 (교재 그림 4.44): fr* = PI(n* − n) (±fr_max 제한), fs = fm + fr*, V = V/f(fs).
+    토크는 등가회로의 정상상태 값을 씀 (준정적). n_ref_steps / TL_steps: [(시각, 값), ...]."""
+    M = dict(IM, **(M or {}))
+    pp = M["P"] / 2
+    n = int(t_end / h)
+    wm = 0.0; x = 0.0
+    rec = np.zeros((n, 7))
+
+    def at(steps, t):
+        v = steps[0][1]
+        for ts, val in steps:
+            if t >= ts: v = val
+        return v
+    for k in range(n):
+        t = k * h
+        nref = at(n_ref_steps, t); TL = at(TL_steps, t)
+        nm = wm * 60 / (2 * math.pi)
+        e = nref - nm
+        fr_u = Kp * e + x
+        fr = min(max(fr_u, -fr_max), fr_max)
+        if fr_u == fr:
+            x += Ki * e * h
+        fm = nm * pp / 60
+        fs = max(fm + fr, 0.2)
+        V = float(vf_voltage(fs, M, boost))
+        s = (fs - fm) / fs
+        T = float(im_circuit(s, M, V, fs)["T"])
+        wm += h * (T - TL * np.sign(wm if abs(wm) > 1e-3 else 1) - 0.002 * wm) / J
+        rec[k] = (t, nm, nref, fs, fr, T, V)
+    return dict(t=rec[:, 0], n=rec[:, 1], nref=rec[:, 2], fs=rec[:, 3], fr=rec[:, 4], T=rec[:, 5], V=rec[:, 6])

@@ -52,6 +52,33 @@ def gap_force_linear(i, g, N=200, A=4e-4, lc=0.3, mur=4000.0):
     return -0.5 * i * i * N * N * MU0 * A / (ge * ge)
 
 
+def linear_machine_paths(i0, x1, x2, n=200, **kw):
+    """직선 운동 기계: 공극 x1 → x2 (감소) 이동 시 λ-i 평면의 두 경로와 기계적 에너지.
+    매우 빠르게(λ 일정): A(i0, x1) → C(같은 λ, x2) → B(i0, x2).  매우 느리게(i 일정): A → B.
+    반환 dict(i, lam1, lam2, A, B, C, W_fast, W_slow)."""
+    i = np.linspace(0, max(i0 * 1.6, 1e-6), n)
+    lam1, lam2 = lambda_i(i, g=x1, **kw), lambda_i(i, g=x2, **kw)
+    lA, lB = float(lambda_i(i0, g=x1, **kw)), float(lambda_i(i0, g=x2, **kw))
+    iC = float(np.interp(lA, lam2, i))
+    # 빠른 이동: 기계적 에너지 = 이동 전후 자기 에너지 감소 (λ 일정) = 면적 OAC
+    WA = energy_coenergy(i0, g=x1, **kw)[0]
+    WC = energy_coenergy(iC, g=x2, **kw)[0] if iC > 0 else 0.0
+    # 느린 이동: 기계적 에너지 = 코에너지 증가 (i 일정) = 면적 OAB
+    Wc1 = energy_coenergy(i0, g=x1, **kw)[1]; Wc2 = energy_coenergy(i0, g=x2, **kw)[1]
+    return dict(i=i, lam1=lam1, lam2=lam2, A=(i0, lA), B=(i0, lB), C=(iC, lA), W_fast=WA - WC, W_slow=Wc2 - Wc1)
+
+
+def magnet_torque(theta, kind):
+    """두 자석 (sinθ) 또는 자석 + 자성체 (sin2θ, 릴럭턴스) 의 토크–각도 특성 (단위값, θ = 회전자가 고정자 자계에서 뒤진 각)."""
+    th = np.asarray(theta, dtype=float)
+    return np.sin(th) if kind == "자석–자석" else 0.5 * np.sin(2 * th)
+
+
+def cylinder_inertia(m, r, hollow=False, r_in=0.0):
+    """원통(원판) J = ½ m r², 속이 빈 원통 J = ½ m (r² + r_in²), 얇은 링 J = m r²."""
+    return 0.5 * m * (r * r + (r_in * r_in if hollow else 0.0))
+
+
 # ---------------------------------------------------------------- 1.2.3 릴럭턴스 토크 (단일 여자 회전 기기)
 def reluctance_torque(t, Im, ws, wm, delta, L2):
     """L(θ) = L0 + L2·cos2θ, i = Im·cos(ωs t), θ = ωm t − δ 일 때 순시 토크 T = ½ i² dL/dθ = −i² L2 sin2θ."""

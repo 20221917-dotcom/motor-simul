@@ -5,10 +5,11 @@ import numpy as np
 
 RPM = 60 / (2 * math.pi)
 
-# 교재 2.9 절 시뮬레이션 대상: 140 V, 25 A, 3000 r/min 영구자석 직류 전동기.
-# 교재의 m-file 값은 슬라이드에 없으므로, 정격과 "감쇠비 ζ = 0.37 (부족감쇠)" 를 만족하도록 정했습니다.
-TEXTBOOK = dict(V=140.0, I=25.0, n=3000.0, Ra=0.5, La=5e-3, J=1.8e-3, B=1e-4)
-TEXTBOOK["K"] = (TEXTBOOK["V"] - TEXTBOOK["Ra"] * TEXTBOOK["I"]) / (TEXTBOOK["n"] / RPM)
+# 교재 2.9 절 시뮬레이션 대상 (m-file 값): 140 V, 25 A, 3000 r/min, 3336 W, Ra = 0.26 Ω, La = 1.7 mH, J = 0.00252, B = 0
+TEXTBOOK = dict(V=140.0, I=25.0, n=3000.0, P=3336.0, Ra=0.26, La=1.7e-3, J=0.00252, B=0.0)
+TEXTBOOK["K"] = TEXTBOOK["P"] / (TEXTBOOK["n"] / RPM) / TEXTBOOK["I"]      # K = Te_rated / Ia_rated
+# 교재 예제 2 (2.4 절): 5 kW, 125 V, 1800 r/min, Ra = 0.256 Ω, La = 1.7 mH, J = 0.00252, kφ = 0.6034
+EXAMPLE2 = dict(V=125.0, I=43.96, n=1800.0, Ra=0.256, La=1.7e-3, J=0.00252, B=0.0, K=0.6034)
 
 
 # ---------------------------------------------------------------- 2.3 정상상태
@@ -129,7 +130,7 @@ def simulate(P, t_end, h=1e-5, *, i_ref=None, w_ref=None, TL=None, fixed_speed=N
     Kps, Kis = speed_gains(P, wcs)
     n = int(round(t_end / h)) + 1
     t = np.linspace(0, t_end, n); h = t[1] - t[0]
-    rec = np.zeros((n, 6))          # ia, ω, i*, v*, v (제한 후), ω*
+    rec = np.zeros((n, 7))          # ia, ω, i*, v*, v (제한 후), ω*, 전류 적분기 값
     ia, w = 0.0, (fixed_speed or 0.0)
     xi, xw = 0.0, 0.0
     for k in range(n):
@@ -147,7 +148,7 @@ def simulate(P, t_end, h=1e-5, *, i_ref=None, w_ref=None, TL=None, fixed_speed=N
         vu = Kpc * e + xi + (K * w if ff else 0.0)
         v = min(max(vu, -Vlim), Vlim)
         xi += h * Kic * (e - (1.0 / Kpc) * (vu - v) * (1 if antiwindup else 0))
-        rec[k] = (ia, w, istar, vu, v, wr)
+        rec[k] = (ia, w, istar, vu, v, wr, xi)
         # 플랜트 (전기 RK2, 기계 오일러로 충분: h ≪ 시정수)
         TLk = TL(tk) if TL else 0.0
         di = (v - Ra * ia - K * w) / La
@@ -155,7 +156,7 @@ def simulate(P, t_end, h=1e-5, *, i_ref=None, w_ref=None, TL=None, fixed_speed=N
         ia += h * (v - Ra * ia_mid - K * w) / La
         if fixed_speed is None:
             w += h * (K * ia - B * w - TLk) / J
-    return dict(t=t, ia=rec[:, 0], w=rec[:, 1], istar=rec[:, 2], vstar=rec[:, 3], v=rec[:, 4], wref=rec[:, 5],
+    return dict(t=t, ia=rec[:, 0], w=rec[:, 1], istar=rec[:, 2], vstar=rec[:, 3], v=rec[:, 4], wref=rec[:, 5], xi=rec[:, 6],
                 gains=dict(Kpc=Kpc, Kic=Kic, Kps=Kps, Kis=Kis))
 
 
@@ -214,3 +215,121 @@ def chopper_waveforms(mode, Vdc, va_ref, fsw, R, L, E, periods=4, pts=400):
         if k >= keep0:
             out[k - keep0] = (tt - keep0 * h, tri, S1, S2, v, i)
     return dict(t=out[:, 0], tri=out[:, 1], S1=out[:, 2], S2=out[:, 3], v=out[:, 4], i=out[:, 5])
+
+
+# ---------------------------------------------------------------- 2차 시스템·주파수 응답·안정도 (2.4, 2.5.2)
+def second_order_step(sigma, wd, t):
+    """극점 s = −σ ± jωd 인 2차 시스템 (DC 이득 1) 의 계단 응답. σ < 0 이면 불안정 (발산)."""
+    from scipy import signal
+    wn2 = sigma * sigma + wd * wd
+    if wn2 < 1e-12:
+        return np.zeros_like(t)
+    sys = signal.lti([wn2], [1, 2 * sigma, wn2])
+    _, y = signal.step(sys, T=t)
+    return y
+
+
+def zeta_step(zeta, wn, t):
+    from scipy import signal
+    _, y = signal.step(signal.lti([wn * wn], [1, 2 * zeta * wn, wn * wn]), T=t)
+    return y
+
+
+def generic_loop(K, a, b, w):
+    """개루프 L(s) = K / (s (s/a + 1)(s/b + 1)) 의 보드 선도와 이득·위상 여유, 폐루프 계단 응답용 분모."""
+    s = 1j * np.asarray(w)
+    L = K / (s * (s / a + 1) * (s / b + 1))
+    mag = 20 * np.log10(np.abs(L)); ph = np.degrees(np.unwrap(np.angle(L)))
+    k = np.where(np.diff(np.sign(mag)) < 0)[0]
+    wc = float(w[k[0]]) if len(k) else float("nan")
+    pm = float(180 + np.interp(wc, w, ph)) if len(k) else float("nan")
+    k2 = np.where(np.diff(np.sign(ph + 180)) < 0)[0]
+    w180 = float(w[k2[0]]) if len(k2) else float("nan")
+    gm = float(-np.interp(w180, w, mag)) if len(k2) else float("inf")
+    num = [K]
+    den = np.polyadd(np.polymul([1 / a, 1], np.polymul([1 / b, 1], [1, 0])), [K])
+    return mag, ph, wc, pm, w180, gm, num, den
+
+
+def closed_loop_step(num, den, t):
+    from scipy import signal
+    try:
+        _, y = signal.step(signal.lti(num, den), T=t)
+    except Exception:
+        y = np.full_like(t, np.nan)
+    return np.clip(y, -1e3, 1e3)
+
+
+def pi_closed_bode(P, wcc, w):
+    """전류 제어 폐루프 (극점-영점 상쇄) = ωcc / (s + ωcc): 크기 [dB], 위상 [°]."""
+    G = wcc / (1j * np.asarray(w) + wcc)
+    return 20 * np.log10(np.abs(G)), np.degrees(np.angle(G))
+
+
+def speed_open_bode(P, wcs, wcc, w):
+    """속도 제어 개루프 (Kp + Ki/s)·ωcc/(s + ωcc)·K/(Js)."""
+    Kp, Ki = speed_gains(P, wcs)
+    s = 1j * np.asarray(w)
+    L = (Kp + Ki / s) * wcc / (s + wcc) * P["K"] / (P["J"] * s)
+    return 20 * np.log10(np.abs(L)), np.degrees(np.unwrap(np.angle(L)))
+
+
+def pi_speed_decomposition(P, wcs, t):
+    """PI 속도 폐루프 (전류 제어 이상적) = ωn²/(s²+2ζωn s+ωn²) + 2ζωn s/(…) 로 나눈 두 성분의 계단 응답."""
+    from scipy import signal
+    Kp, Ki = speed_gains(P, wcs)
+    a1, a0 = P["K"] * Kp / P["J"], P["K"] * Ki / P["J"]
+    den = [1, a1, a0]
+    _, y1 = signal.step(signal.lti([a0], den), T=t)          # ωn² 항
+    _, y2 = signal.step(signal.lti([a1, 0], den), T=t)       # 영점 항 (오버슈트의 근원)
+    wn = math.sqrt(a0); zeta = a1 / (2 * wn)
+    return y1, y2, zeta, wn
+
+
+# ---------------------------------------------------------------- 2.9.4 초퍼를 포함한 전체 구동 시스템
+def simulate_chopper_drive(P, t_end=0.2, fsw=5000.0, mode="유니폴라", rpm_ref=2500.0, t_step=0.05,
+                           wcs=2 * math.pi * 50, wcc=2 * math.pi * 500, TL=0.0, steps_per=100, rec_every=5):
+    """속도 PI → 전류 PI (역기전력 보상, 누적 방지) → 초퍼 PWM (스위칭 그대로) → 직류 전동기."""
+    K, Ra, La, J, B, V = P["K"], P["Ra"], P["La"], P["J"], P["B"], P["V"]
+    Kpc, Kic = current_gains(P, wcc); Kps, Kis = speed_gains(P, wcs)
+    Ilim = P["I"]
+    h = 1 / fsw / steps_per
+    n = int(t_end / h)
+    ia = w = xi = xw = 0.0
+    keep = []
+    for k in range(n):
+        t = k * h
+        wr = rpm_ref / RPM if t >= t_step else 0.0
+        iu = Kps * (wr - w) + xw; istar = min(max(iu, -Ilim), Ilim)
+        xw += h * Kis * ((wr - w) - (iu - istar) / Kps)
+        e = istar - ia
+        vu = Kpc * e + xi + K * w; vref = min(max(vu, -V), V)
+        xi += h * Kic * (e - (vu - vref) / Kpc)
+        ph = (t * fsw) % 1.0; tri = 4 * ph - 1 if ph < 0.5 else 3 - 4 * ph
+        m = vref / V
+        if mode == "유니폴라":
+            Sa = 1.0 if m > tri else 0.0; Sb = 1.0 if -m > tri else 0.0; va = V * (Sa - Sb)
+        else:
+            Sa = 1.0 if m > tri else 0.0; Sb = 1.0 - Sa; va = V if Sa else -V
+        ia += h * (va - Ra * ia - K * w) / La
+        w += h * (K * ia - B * w - TL) / J
+        if k % rec_every == 0:
+            keep.append((t, w, ia, K * ia, va, vref, Sa, Sb, tri, istar))
+    a = np.array(keep)
+    return dict(t=a[:, 0], w=a[:, 1], ia=a[:, 2], Te=a[:, 3], va=a[:, 4], vref=a[:, 5], Sa=a[:, 6], Sb=a[:, 7],
+                tri=a[:, 8], istar=a[:, 9])
+
+
+def chopper_ramp(mode, Vdc, fsw, periods=40, pts=200):
+    """지령 Va* 를 +Vdc 에서 −Vdc 로 천천히 바꿀 때의 출력 전압 펄스 (교재 그림 2.60·2.61 아래쪽)."""
+    T = 1 / fsw; h = T / pts
+    n = periods * pts
+    t = np.arange(n) * h
+    m = 0.95 - 1.9 * t / t[-1]
+    ph = (t / T) % 1.0
+    tri = np.where(ph < 0.5, 4 * ph - 1, 3 - 4 * ph)
+    if mode == "바이폴라":
+        v = np.where(m > tri, Vdc, -Vdc)
+    else:
+        v = Vdc * ((m > tri).astype(float) - (-m > tri).astype(float))
+    return t, m * Vdc, v

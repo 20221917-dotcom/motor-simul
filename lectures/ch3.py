@@ -115,12 +115,61 @@ def _trap1(x, edge):
     return -min(1.0, min(x - math.pi, 2 * math.pi - x) / edge)
 
 
+def _step(st, h, t, duty, method, P, edge, off):
+    """스위칭 모델 한 걸음. st: dict(i, th, wm). 반환 기록용 값."""
+    Vdc, R, L, ke, fsw = P["Vdc"], P["R"], P["L"], P["ke"], P["fsw"]
+    i, th, wm = st["i"], st["th"], st["wm"]
+    pwm_on = 1 if ((t * fsw) % 1.0) < duty else 0
+    up, dn = _gates(th - off, pwm_on, method)
+    e = [ke * wm * _trap1(th - sh, edge) for sh in SHIFT]
+    v = [0.0, 0.0, 0.0]; known = [False, False, False]
+    for j, p in enumerate(PHASES):
+        if up[p]:
+            v[j] = Vdc; known[j] = True
+        elif dn[p]:
+            known[j] = True
+        elif i[j] > 1e-9:
+            known[j] = True                    # 아래 다이오드 환류 (v = 0)
+        elif i[j] < -1e-9:
+            v[j] = Vdc; known[j] = True        # 위 다이오드 환류
+
+    def vn_of():
+        ks = [j for j in range(3) if known[j]]
+        return sum(v[j] - R * i[j] - e[j] for j in ks) / len(ks) if len(ks) >= 2 else sum(e) / 3
+    vn = vn_of()
+    for j in range(3):                         # 개방 상 단자 전압이 0~Vdc 를 벗어나면 다이오드 도통
+        if not known[j] and sum(known) >= 2:
+            vf = e[j] + vn
+            if vf > Vdc or vf < 0:
+                v[j] = Vdc if vf > Vdc else 0.0; known[j] = True
+                vn = vn_of()
+    i_new = [i[j] + h * (v[j] - vn - R * i[j] - e[j]) / L if known[j] else 0.0 for j in range(3)]
+    for j in range(3):                         # 환류 전류가 0 을 지나면 그 상은 개방
+        p = PHASES[j]
+        if known[j] and not (up[p] or dn[p]) and i[j] != 0.0 and i_new[j] * i[j] < 0:
+            i_new[j] = 0.0; known[j] = False
+    ks = [j for j in range(3) if known[j]]
+    if 2 <= len(ks) < 3:
+        r = sum(i_new) / len(ks)
+        for j in ks:
+            i_new[j] -= r                      # Σi = 0 유지
+    st["i"] = i_new
+    Te = (e[0] * i_new[0] + e[1] * i_new[1] + e[2] * i_new[2]) / max(wm, 1e-6) if wm > 1e-6 else \
+        ke * sum(_trap1(th - sh, edge) * i_new[k] for k, sh in enumerate(SHIFT))
+    if not all(known):
+        vn = vn_of()                           # 개방 상태가 바뀌었을 수 있으므로 중성점 전압을 다시 계산
+    for j in range(3):
+        if not known[j]:
+            v[j] = e[j] + vn
+    return dict(pwm=pwm_on, up=up, dn=dn, e=e, v=v, vn=vn, Te=Te, known=known)
+
+
 def simulate_bldc(rpm, duty, method="hpwm", P=None, cycles=3, show_cycles=1, flat_deg=120.0, hall_offset_deg=0.0,
                   steps_per_pwm=40, fixed_speed=True, J=1e-4, TL=0.0):
-    """속도를 고정(기본)하거나 기계 방정식을 함께 풀어 상전류·단자 전압·토크를 계산.
+    """속도를 고정(기본)하거나 기계 방정식을 함께 풀어 상전류·단자 전압·토크·게이트 신호를 계산.
     마지막 show_cycles 전기 주기를 돌려줍니다."""
     P = dict(DEFAULT, **(P or {}))
-    Vdc, R, L, ke, pp, fsw = P["Vdc"], P["R"], P["L"], P["ke"], P["poles"] / 2, P["fsw"]
+    pp, fsw = P["poles"] / 2, P["fsw"]
     edge = max((math.pi - math.radians(flat_deg)) / 2, 1e-9)
     wm = rpm / RPM
     we = pp * max(wm, 1e-3)
@@ -129,58 +178,70 @@ def simulate_bldc(rpm, duty, method="hpwm", P=None, cycles=3, show_cycles=1, fla
     n = int(cycles * T_e / h)
     keep = int(show_cycles * T_e / h)
     off = math.radians(hall_offset_deg)
-    i = [0.0, 0.0, 0.0]; th = 0.0
-    rec = np.zeros((keep, 18))
+    st = dict(i=[0.0, 0.0, 0.0], th=0.0, wm=wm)
+    rec = np.zeros((keep, 24))
     for k in range(n):
         t = k * h
-        pwm_on = 1 if ((t * fsw) % 1.0) < duty else 0
-        up, dn = _gates(th - off, pwm_on, method)
-        e = [ke * wm * _trap1(th - sh, edge) for sh in SHIFT]
-        v = [0.0, 0.0, 0.0]; known = [False, False, False]
-        for j, p in enumerate(PHASES):
-            if up[p]:
-                v[j] = Vdc; known[j] = True
-            elif dn[p]:
-                known[j] = True
-            elif i[j] > 1e-9:
-                known[j] = True                    # 아래 다이오드 환류 (v = 0)
-            elif i[j] < -1e-9:
-                v[j] = Vdc; known[j] = True        # 위 다이오드 환류
-        def vn_of():
-            ks = [j for j in range(3) if known[j]]
-            return sum(v[j] - R * i[j] - e[j] for j in ks) / len(ks) if len(ks) >= 2 else sum(e) / 3
-        vn = vn_of()
-        for j in range(3):                         # 개방 상 단자 전압이 0~Vdc 를 벗어나면 다이오드 도통
-            if not known[j] and sum(known) >= 2:
-                vf = e[j] + vn
-                if vf > Vdc or vf < 0:
-                    v[j] = Vdc if vf > Vdc else 0.0; known[j] = True
-                    vn = vn_of()
-        i_new = [i[j] + h * (v[j] - vn - R * i[j] - e[j]) / L if known[j] else 0.0 for j in range(3)]
-        for j in range(3):                         # 환류 전류가 0 을 지나면 그 상은 개방
-            p = PHASES[j]
-            if known[j] and not (up[p] or dn[p]) and i[j] != 0.0 and i_new[j] * i[j] < 0:
-                i_new[j] = 0.0; known[j] = False
-        ks = [j for j in range(3) if known[j]]
-        if len(ks) >= 2 and len(ks) < 3:
-            r = sum(i_new) / len(ks)
-            for j in ks:
-                i_new[j] -= r                      # Σi = 0 유지
-        i = i_new
-        Te = (e[0] * i[0] + e[1] * i[1] + e[2] * i[2]) / max(wm, 1e-6)
-        if not all(known):
-            vn = vn_of()                           # 개방 상태가 바뀌었을 수 있으므로 중성점 전압을 다시 계산
-        for j in range(3):
-            if not known[j]:
-                v[j] = e[j] + vn
+        o = _step(st, h, t, duty, method, P, edge, off)
         if not fixed_speed:
-            wm += h * (Te - TL) / J; we = pp * wm
-        th += we * h
+            st["wm"] += h * (o["Te"] - TL) / J
+        st["th"] += pp * st["wm"] * h
         if k >= n - keep:
-            rec[k - (n - keep)] = (t, th, *i, *v, vn, *e, Te, pwm_on, sector(th - off), *[0.0 if known[j] else 1.0 for j in range(3)])
+            r = k - (n - keep)
+            rec[r] = (t, st["th"], *st["i"], *o["v"], o["vn"], *o["e"], o["Te"], o["pwm"], sector(st["th"] - off),
+                      *[0.0 if q else 1.0 for q in o["known"]], *[o["up"][p] for p in PHASES], *[o["dn"][p] for p in PHASES])
     tt = rec[:, 0] - rec[0, 0]
     return dict(t=tt, th=rec[:, 1], i=rec[:, 2:5].T, v=rec[:, 5:8].T, vn=rec[:, 8], e=rec[:, 9:12].T, Te=rec[:, 12],
-                pwm=rec[:, 13], sector=rec[:, 14], floating=rec[:, 15:18].T > 0.5, P=P, wm=wm)
+                pwm=rec[:, 13], sector=rec[:, 14], floating=rec[:, 15:18].T > 0.5, up=rec[:, 18:21].T, dn=rec[:, 21:24].T,
+                P=P, wm=st["wm"])
+
+
+def simulate_bldc_drive(rpm_ref, ctrl="전류 제어", method="hpwm", P=None, J=2e-4, TL=0.05, t_end=0.12, t_load=0.08,
+                        wcs=2 * math.pi * 20, Imax=10.0, steps_per_pwm=20, rec_every=4):
+    """정지에서 속도 지령으로 기동 (교재 3.4: 속도 PI → 듀티, 또는 속도 PI → 직류 전류 PI → 듀티).
+    부하 TL 은 t_load 에 걸림."""
+    P = dict(DEFAULT, **(P or {}))
+    Vdc, R, L, ke, pp, fsw = P["Vdc"], P["R"], P["L"], P["ke"], P["poles"] / 2, P["fsw"]
+    edge = (math.pi - math.radians(120)) / 2
+    h = 1 / fsw / steps_per_pwm
+    n = int(t_end / h)
+    st = dict(i=[0.0, 0.0, 0.0], th=0.0, wm=0.0)
+    kt = 2 * ke                                       # Te = 2·ke·I (두 상 통전)
+    Kps = J * wcs / kt; Kis = Kps * wcs / 5            # 속도 PI → 전류 [A]
+    wcc = 2 * math.pi * 500; Kpc = 2 * L * wcc; Kic = 2 * R * wcc
+    xw = xi = 0.0; duty = 0.0
+    wr = rpm_ref / RPM
+    out = []
+    for k in range(n):
+        t = k * h
+        if k % steps_per_pwm == 0:                    # PWM 주기마다 제어 계산
+            Ts = 1 / fsw
+            ew = wr - st["wm"]
+            if ctrl == "전류 제어":
+                iu = Kps * ew + xw; istar = min(max(iu, 0.0), Imax)
+                xw += Ts * Kis * (ew - (iu - istar) / Kps)
+                idc = 0.5 * sum(abs(x) for x in st["i"])
+                ei = istar - idc
+                vu = Kpc * ei + xi + 2 * ke * st["wm"]
+                vv = min(max(vu, 0.0), Vdc)
+                xi += Ts * Kic * (ei - (vu - vv) / Kpc)
+            else:                                     # 속도 PI 출력 = 전압 지령 (전류 제한 없음)
+                Kpv = Kps * Kpc / (2 * L)               # 전류 루프가 없으므로 비슷한 크기의 전압 이득을 바로 씀
+                vu = Kpv * ew + xw
+                vv = min(max(vu, 0.0), Vdc)
+                if vu == vv:
+                    xw += Ts * Kpv * wcs / 5 * ew       # 포화 중에는 적분 멈춤
+                istar = float("nan")
+            duty = vv / Vdc
+        o = _step(st, h, t, duty, method, P, edge, 0.0)
+        TLk = TL if t >= t_load else 0.0
+        st["wm"] += h * (o["Te"] - TLk - 1e-5 * st["wm"]) / J
+        st["wm"] = max(st["wm"], 0.0)
+        st["th"] += pp * st["wm"] * h
+        if k % rec_every == 0:
+            out.append((t, st["wm"] * RPM, o["Te"], *st["i"], o["e"][0], duty, istar))
+    a = np.array(out)
+    return dict(t=a[:, 0], rpm=a[:, 1], Te=a[:, 2], i=a[:, 3:6].T, ea=a[:, 6], duty=a[:, 7], istar=a[:, 8], P=P)
 
 
 def ripple_percent(x):

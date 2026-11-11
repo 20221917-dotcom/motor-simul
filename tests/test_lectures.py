@@ -190,3 +190,62 @@ def test_speed_regions_constant_torque_then_power():
     low = R["T"][(R["n"] > 0.3 * ns) & (R["n"] < 0.9 * ns)]
     assert np.ptp(low) / np.mean(low) < 0.05                           # 기저 속도 이하: 토크 일정
     assert R["T"][-1] < 0.5 * np.mean(low)                             # 고속: 토크 감소
+
+
+# ---------------- 슬라이드 그림 보강분
+def test_textbook_values_from_mfile_and_example2():
+    assert ch2.TEXTBOOK["K"] == pytest.approx(3336 / (3000 * 2 * math.pi / 60) / 25)
+    _, _, poles, zeta, *_ = ch2.voltage_to_speed(ch2.EXAMPLE2)
+    assert poles[0].real == pytest.approx(-75.2941, abs=1e-3) and abs(poles[0].imag) == pytest.approx(281.63, abs=0.05)
+    assert zeta == pytest.approx(0.2583, abs=1e-3)
+    _, _, z, _ = ch2.pi_speed_decomposition(ch2.TEXTBOOK, 2 * math.pi * 50, np.linspace(0, 0.05, 50))
+    assert z == pytest.approx(math.sqrt(5) / 2)                       # 교재: ζ = √5/2
+
+
+def test_linear_machine_energy_paths_linear_region():
+    # 선형 영역에서 느린 이동의 기계적 에너지 = ½ i² ΔL, 빠른 이동은 그보다 작음
+    p = ch1.linear_machine_paths(0.5, 2e-3, 1e-3)
+    L1 = p["A"][1] / 0.5; L2 = p["B"][1] / 0.5
+    assert p["W_slow"] == pytest.approx(0.5 * 0.25 * (L2 - L1), rel=1e-2)
+    assert 0 < p["W_fast"] < p["W_slow"]
+
+
+def test_stability_margins_and_closed_loop():
+    w = np.logspace(-2, 3, 3000)
+    *_, num_s, den_s = ch2.generic_loop(2.0, 2, 10, w)
+    *_, num_u, den_u = ch2.generic_loop(30.0, 2, 10, w)
+    t = np.linspace(0, 20, 2000)
+    assert abs(ch2.closed_loop_step(num_s, den_s, t)[-1] - 1) < 0.02
+    assert np.max(np.abs(ch2.closed_loop_step(num_u, den_u, t))) > 5   # 이득이 너무 크면 발산
+    _, _, wc, pm, w180, gm, *_ = ch2.generic_loop(2.0, 2, 10, w)
+    assert pm > 0 and gm > 0
+
+
+def test_chopper_drive_reaches_speed_with_ripple():
+    d = ch2.simulate_chopper_drive(ch2.TEXTBOOK, t_end=0.2)
+    assert d["w"][-1] * ch2.RPM == pytest.approx(2500, rel=0.01)
+    assert np.max(d["Te"][(d["t"] > 0.06) & (d["t"] < 0.09)]) == pytest.approx(ch2.TEXTBOOK["K"] * 25, rel=0.15)   # 토크 제한
+
+
+def test_bldc_drive_current_control_limits_current():
+    a = ch3.simulate_bldc_drive(2000, "전류 제어")
+    b = ch3.simulate_bldc_drive(2000, "전압(듀티) 제어")
+    assert a["rpm"][-1] == pytest.approx(2000, rel=0.05) and b["rpm"][-1] == pytest.approx(2000, rel=0.05)
+    assert np.max(np.abs(a["i"])) < 0.5 * np.max(np.abs(b["i"]))      # 전류 제어는 기동 과전류가 작음
+
+
+def test_winding_factor_and_deep_bar():
+    th = np.linspace(0, 2 * math.pi, 1440, endpoint=False)
+    for q in (1, 2, 3):
+        _, _, kd, _ = ch4.winding_mmf(th, q, "3상")
+        g = math.pi / (3 * q)
+        assert kd == pytest.approx(math.sin(q * g / 2) / (q * math.sin(g / 2)))
+    thd = [ch4.winding_mmf(th, q, "3상")[3] for q in (1, 2, 3)]
+    assert thd[0] > thd[1] > thd[2]
+    assert float(ch4.deep_bar_ratio(1.0)) == pytest.approx(1.0, abs=0.01) and float(ch4.deep_bar_ratio(60.0)) > 2
+
+
+def test_vf_closed_loop_tracks_with_load():
+    r = ch4.vf_closed_loop([(0, 0), (0.2, 1200)], [(0, 0), (2.0, 40)])
+    assert r["n"][-1] == pytest.approx(1200, abs=2)
+    assert 0 < r["fr"][-1] <= 3.0 and r["fs"][-1] == pytest.approx(1200 * 2 / 60 + r["fr"][-1], abs=0.05)

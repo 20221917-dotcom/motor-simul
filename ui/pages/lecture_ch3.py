@@ -19,6 +19,11 @@ def _sim(rpm, duty, method, flat, hall_off, fsw, cycles=3, show=1):
     return ch3.simulate_bldc(rpm, duty, method, P=dict(fsw=fsw), flat_deg=flat, hall_offset_deg=hall_off, cycles=cycles, show_cycles=show)
 
 
+@st.cache_data(max_entries=16, show_spinner=False)
+def _drive(rpm, ctrl, method, TL):
+    return ch3.simulate_bldc_drive(rpm, ctrl, method, TL=TL)
+
+
 def _shapes():
     ref("3.1 BLDC 전동기의 구조 · BLDC 와 영구자석 동기 전동기의 비교 — 사다리꼴 역기전력 + 120° 사각파 전류 vs 정현파 + 정현파")
     c = st.columns(3)
@@ -32,7 +37,9 @@ def _shapes():
     for k, p in enumerate("abc"):
         fig.add_trace(go.Scatter(x=x, y=e[k], name=f"e{p}", line=dict(color=COL[p])), 1, 1)
         fig.add_trace(go.Scatter(x=x, y=i[k], name=f"i{p}", line=dict(color=COL[p], shape="hv" if ik != "정현파" else None)), 2, 1)
-    fig.add_trace(go.Scatter(x=x, y=T, name="토크", line=dict(color="#111", width=3)), 3, 1)
+    for k, p in enumerate("abc"):
+        fig.add_trace(go.Scatter(x=x, y=e[k] * i[k], name=f"T{p} = e{p}·i{p}", line=dict(color=COL[p], dash="dot")), 3, 1)
+    fig.add_trace(go.Scatter(x=x, y=T, name="3상 토크 (합)", line=dict(color="#111", width=3)), 3, 1)
     fig.update_xaxes(title_text="전기각 θe [°]", row=3, col=1, dtick=60)
     st.plotly_chart(lstyle(fig, height=520, side_legend=True), width="stretch", key="l3_shape")
     info_metric(st.columns(3)[0], "토크 리플 (최대−최소)/평균", f"{ch3.ripple_percent(T):.1f} %")
@@ -58,6 +65,31 @@ def _six_step():
         st.markdown(f"전류 경로: **Vdc(+) → {hi.upper()}+ → {hi}상 → 중성점 → {lo}상 → {lo.upper()}− → Vdc(−)**, "
                     f"**{fl}상은 개방** (역기전력만 나타남)")
     c[1].plotly_chart(bldc_inverter(sw, roles, title=f"θe = {deg}° : {hi}+ / {lo}− 통전, {fl} 개방"), width="stretch", key="l3_inv")
+    # 고정자 자계 (통전 두 상의 기자력 합) 와 회전자 N 극 방향
+    ax = {"a": 0.0, "b": 120.0, "c": 240.0}
+    v = np.exp(1j * np.radians(ax[hi])) - np.exp(1j * np.radians(ax[lo]))
+    rot = (deg + 180) % 360
+    pol = go.Figure()
+    pol.add_trace(go.Scatterpolar(r=[0, 1], theta=[0, math.degrees(np.angle(v))], mode="lines+markers", line=dict(color="#7c3aed", width=6),
+                                  name="고정자 자계 (통전 상의 기자력)"))
+    pol.add_trace(go.Scatterpolar(r=[0, 0.8], theta=[0, rot], mode="lines+markers", line=dict(color="#d62828", width=6), name="회전자 N 극"))
+    for p_, a_ in ax.items():
+        pol.add_trace(go.Scatterpolar(r=[0, 1.1], theta=[0, a_], mode="lines", line=dict(color=COL[p_], width=1, dash="dot"), name=f"{p_}상 축", showlegend=False))
+    pol.update_layout(height=320, margin=dict(l=30, r=30, t=30, b=30), polar=dict(radialaxis=dict(visible=False)), legend=dict(orientation="h", y=-0.15))
+    c = st.columns([2, 3])
+    c[0].plotly_chart(pol, width="stretch", key="l3_pol")
+    lead = (math.degrees(np.angle(v)) - rot + 540) % 360 - 180
+    c[0].caption(f"고정자 자계가 회전자보다 {lead:.0f}° 앞섬 (60°~120° 사이에서 회전 방향 토크, 90° 에서 최대). "
+                 "θe 슬라이더를 움직이면 자계가 60° 마다 한 칸씩 뜀.")
+    with c[1]:
+        st.markdown("**홀 센서 전압** V_H = (R_H/d)·I_H·B → 비교기로 0/1 신호")
+        xh = np.linspace(0, 360, 721)
+        figh = go.Figure()
+        figh.add_trace(go.Scatter(x=xh, y=np.sin(np.radians(xh)), name="H1 홀 전압 (∝ 자속 밀도 B)", line=dict(color=COL["a"])))
+        figh.add_trace(go.Scatter(x=xh, y=(np.sin(np.radians(xh)) > 0).astype(float) * 1.2, name="H1 디지털 출력", line=dict(color="#111", shape="hv")))
+        figh.add_vline(x=deg, line=dict(color="#16a34a", width=2))
+        figh.update_xaxes(title_text="θe [°]", dtick=60)
+        st.plotly_chart(lstyle(figh, height=260), width="stretch", key="l3_hallv")
     x = np.linspace(0, 360, 1441)
     xr = np.radians(x)
     fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.06,
@@ -97,6 +129,17 @@ def _commutation():
     fig.add_trace(go.Scatter(x=t, y=r["Te"], name="Te", line=dict(color="#111")), 3, 1)
     fig.update_xaxes(title_text="시간 [ms] (전기각 1주기)", row=3, col=1)
     st.plotly_chart(lstyle(fig, height=520, side_legend=True), width="stretch", key="l3_comm")
+    sec = r["sector"]; kk = np.where(np.diff(sec) != 0)[0]
+    if len(kk):
+        k0 = kk[len(kk) // 2]; win = int(len(t) / 6 * 0.6)
+        zs = slice(max(k0 - win // 3, 0), min(k0 + win, len(t)))
+        figz = make_subplots(rows=2, cols=1, shared_xaxes=True, subplot_titles=("상 전환 구간 확대: 상전류", "토크 (전환 구간에서 솟거나 꺼짐)"))
+        for k, p in enumerate("abc"):
+            figz.add_trace(go.Scatter(x=t[zs], y=r["i"][k][zs], name=f"i{p}", line=dict(color=COL[p])), 1, 1)
+        figz.add_trace(go.Scatter(x=t[zs], y=r["Te"][zs], name="Te", line=dict(color="#111")), 2, 1)
+        figz.add_vline(x=t[k0 + 1], line=dict(color="#16a34a", dash="dot"))
+        figz.update_xaxes(title_text="시간 [ms]", row=2, col=1)
+        st.plotly_chart(lstyle(figz, height=380), width="stretch", key="l3_commz")
     E = r["P"]["ke"] * r["wm"]
     c = st.columns(4)
     info_metric(c[0], "평균 토크", f"{np.mean(r['Te']):.3f} N·m")
@@ -130,6 +173,13 @@ def _pwm():
     fig.add_trace(go.Scatter(x=t, y=r["Te"], name="Te", line=dict(color="#111")), 3, 1)
     fig.update_xaxes(title_text="시간 [ms]", row=3, col=1)
     st.plotly_chart(lstyle(fig, height=540, side_legend=True), width="stretch", key="l3_pwm")
+    figg = go.Figure()
+    for k, p in enumerate("abc"):
+        figg.add_trace(go.Scatter(x=t, y=r["up"][k] * 0.8 + (5 - 2 * k) * 1.0, name=f"{p.upper()}+", line=dict(color=COL[p], shape="hv", width=1)))
+        figg.add_trace(go.Scatter(x=t, y=r["dn"][k] * 0.8 + (4 - 2 * k) * 1.0, name=f"{p.upper()}−", line=dict(color=COL[p], shape="hv", width=1, dash="dot")))
+    figg.update_yaxes(tickvals=[5.4, 4.4, 3.4, 2.4, 1.4, 0.4], ticktext=["A+", "A−", "B+", "B−", "C+", "C−"])
+    figg.update_xaxes(title_text="시간 [ms] — 6개 스위치의 게이트 신호 (교재 그림: 상단·하단·선단·후단 PWM)")
+    st.plotly_chart(lstyle(figg, height=320, showlegend=False), width="stretch", key="l3_gates")
     rows = []
     for lab, m in ch3.PWM_METHODS.items():
         rr = _sim(rpm, duty, m, 120.0, 0, fsw)
@@ -138,6 +188,23 @@ def _pwm():
     check("바이폴라는 꺼진 동안 −Vdc 가 걸려 같은 듀티에서 평균 전압이 (2D−1)·Vdc 로 작고 전류 리플이 큼 (듀티를 0.8 이상으로 올려 보세요)",
           "유니폴라는 한 스위치만 PWM → 스위칭 손실·전류 리플이 작지만, 개방 상의 다이오드 환류로 리플 전류가 생길 수 있음",
           "PWM_ON / ON_PWM 은 120° 통전 구간의 앞·뒤 60° 에만 PWM 을 해 스위치마다 손실을 고르게 나눔")
+    st.markdown("##### 3.4.1 속도 제어로 정지 상태에서 기동 (교재 Simulink 결과: 속도·토크·역기전력·상전류)")
+    c = st.columns(3)
+    ctrl = c[0].radio("제어 구조", ["전류 제어", "전압(듀티) 제어"], key="l3d_c",
+                      help="전압(듀티) 제어: 속도 PI 출력이 바로 PWM 듀티 → 간단하지만 지령이 크게 바뀌면 과전류. 전류 제어: 속도 PI → 직류 전류 지령 → 전류 PI → 듀티")
+    rpmr = c[1].slider("속도 지령 [rpm]", 500, 3500, 2000, 100, key="l3d_rpm")
+    TLd = c[2].slider("0.08 s 에 거는 부하 [N·m]", 0.0, 0.3, 0.1, 0.01, key="l3d_tl")
+    d = _drive(rpmr, ctrl, "hpwm", TLd)
+    figd = make_subplots(rows=2, cols=2, shared_xaxes=True, subplot_titles=("속도 [rpm]", "토크 [N·m]", "a상 역기전력 [V]", "상전류 [A]"))
+    figd.add_trace(go.Scatter(x=d["t"], y=d["rpm"], name="속도"), 1, 1)
+    figd.add_hline(y=rpmr, line=dict(dash="dot", color="#999"), row=1, col=1)
+    figd.add_trace(go.Scatter(x=d["t"], y=d["Te"], name="토크", line=dict(width=1)), 1, 2)
+    figd.add_trace(go.Scatter(x=d["t"], y=d["ea"], name="ea", line=dict(width=1)), 2, 1)
+    for k, p in enumerate("abc"):
+        figd.add_trace(go.Scatter(x=d["t"], y=d["i"][k], name=f"i{p}", line=dict(color=COL[p], width=1)), 2, 2)
+    figd.update_xaxes(title_text="시간 [s]", row=2, col=1); figd.update_xaxes(title_text="시간 [s]", row=2, col=2)
+    st.plotly_chart(lstyle(figd, height=480), width="stretch", key="l3_drive")
+    info_metric(st.columns(3)[0], "최대 상전류", f"{np.max(np.abs(d['i'])):.1f} A", "전류 제어는 10 A 로 제한" if ctrl == "전류 제어" else "전류 제한 없음")
 
 
 def _sensorless():
@@ -146,7 +213,8 @@ def _sensorless():
     rpm = c[0].slider("속도 [rpm] (고정)", 300, 4000, 1500, 100, key="l3z_rpm")
     duty = c[1].slider("PWM 듀티", 0.1, 1.0, 0.6, 0.05, key="l3z_d")
     fsw = c[2].selectbox("PWM 주파수", [5000, 10000, 20000], index=1, format_func=lambda x: f"{x // 1000} kHz", key="l3z_f")
-    r = _sim(rpm, duty, "hpwm", 120.0, 0, fsw)
+    zl = st.selectbox("PWM 기법 (교재 그림: 상단·하단·선단·후단 구동의 단자 전압)", list(ch3.PWM_METHODS)[1:], key="l3z_m")
+    r = _sim(rpm, duty, ch3.PWM_METHODS[zl], 120.0, 0, fsw)
     det, true = ch3.zero_crossings(r, 0)
     t = r["t"] * 1000
     Vh = r["P"]["Vdc"] / 2
