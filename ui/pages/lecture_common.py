@@ -27,3 +27,19 @@ def lstyle(fig, height=380, side_legend=False, **kw):
     fig.update_layout(legend=dict(orientation="h", yanchor="top", y=-0.2, x=0, xanchor="left"),
                       margin=dict(l=10, r=10, t=40, b=70))
     return fig
+
+
+def thin(d, n=2500):
+    """그래프용으로 시계열을 솎아 냄 (브라우저로 보내는 점 수를 줄여 반응을 빠르게). 같은 길이의 배열만 처리."""
+    import numpy as np
+    t = d.get("t")
+    if t is None or len(t) <= n:
+        return d
+    step = int(np.ceil(len(t) / n))
+    out = {}
+    for k, v in d.items():
+        if isinstance(v, np.ndarray) and v.ndim >= 1 and v.shape[-1] == len(t):
+            out[k] = v[..., ::step]
+        else:
+            out[k] = v
+    return out

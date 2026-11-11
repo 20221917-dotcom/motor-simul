@@ -47,30 +47,25 @@ def voltage_to_speed(P, La=None):
 
 
 def voltage_step(P, steps, t_end, La=None, h=None):
-    """전기자 전압 계단 [(t, V), ...] 에 대한 ia, ω (RK4)."""
+    """전기자 전압 계단 [(t, V), ...] 에 대한 ia, ω. 선형 시스템이므로 상태공간 해(lsim)로 한 번에 계산."""
+    from scipy import signal
     La = P["La"] if La is None else La
     K, Ra, J, B = P["K"], P["Ra"], P["J"], P["B"]
-    h = h or min(2e-5, (La / Ra if La else 1e-3) / 20)
-    n = int(round(t_end / h)) + 1
-    t = np.linspace(0, t_end, n); h = t[1] - t[0]
-    ia, w = np.zeros(n), np.zeros(n)
+    n = 4001
+    t = np.linspace(0, t_end, n)
     Vt = np.zeros(n)
-    for k in range(n):
-        Vt[k] = 0.0
-        for (ts, V) in steps:
-            if t[k] >= ts: Vt[k] = V
-    x = np.zeros(2)
-    for k in range(n - 1):
-        V = Vt[k]
-        if La == 0:          # 1차 근사: ia = (V − Kω)/Ra
-            f = lambda s: np.array([0.0, (K * (V - K * s[1]) / Ra - B * s[1]) / J])
-        else:
-            f = lambda s: np.array([(V - Ra * s[0] - K * s[1]) / La, (K * s[0] - B * s[1]) / J])
-        k1 = f(x); k2 = f(x + h / 2 * k1); k3 = f(x + h / 2 * k2); k4 = f(x + h * k3)
-        x = x + h / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
-        if La == 0: x[0] = (V - K * x[1]) / Ra
-        ia[k + 1], w[k + 1] = x
-    if La == 0: ia[0] = Vt[0] / Ra
+    for (ts, V) in steps:
+        Vt[t >= ts] = V
+    if La > 0:
+        A = [[-Ra / La, -K / La], [K / J, -B / J]]
+        sys = signal.StateSpace(A, [[1 / La], [0]], np.eye(2), [[0], [0]])
+        _, _, x = signal.lsim(sys, Vt, t)
+        ia, w = x[:, 0], x[:, 1]
+    else:                                   # 1차 근사: ia = (V − Kω)/Ra
+        sys = signal.StateSpace([[-(K * K / Ra + B) / J]], [[K / (Ra * J)]], [[1]], [[0]])
+        _, w, _ = signal.lsim(sys, Vt, t)
+        w = np.asarray(w).ravel()
+        ia = (Vt - K * w) / Ra
     return t, Vt, ia, w
 
 

@@ -10,7 +10,7 @@ from lectures import ch2
 from concepts.commutation import torque_waveforms
 from lectures.ch2 import EXAMPLE2, RPM, TEXTBOOK
 from ui.lecture_draw import hbridge
-from ui.pages.lecture_common import check, link, lstyle, ref
+from ui.pages.lecture_common import check, link, lstyle, ref, thin
 from ui.plots import info_metric
 
 
@@ -71,6 +71,7 @@ def _motor_inputs(key, show=True):
     return P
 
 
+@st.fragment
 def _types():
     ref("2.1 직류 전동기의 구조·종류·동작 원리 (정류자와 브러시)")
     st.markdown("여자 방식(타여자·분권·직권·가동/차동 복권)별 결선도, 속도–토크 특성, 정류자와 코일 수에 따른 토크 리플, "
@@ -96,6 +97,7 @@ def _types():
     with c[2]: link("회로 시뮬레이터 (DC 전동기 기동)", "circuit")
 
 
+@st.fragment
 def _steady():
     ref("2.3 정상상태 특성 — 전기자 전압 제어, 계자 자속 제어(약계자), 일정 토크·일정 출력 영역과 능력 곡선")
     P = _motor_inputs("l2s_")
@@ -165,6 +167,7 @@ def _steady():
           "기저 속도 이하: 전류 일정 → 토크 일정, 이상: 전압·전류 일정 → 출력 일정 (토크는 1/ω)")
 
 
+@st.fragment
 def _transient():
     ref("2.4 과도상태 특성 — 전달함수 ω/V, 극점과 감쇠비 ζ, 전기 기계 시정수 Tm·전기자 시정수 Ta, La = 0 근사 / 2.9.1 Simulink 결과 (0.05 s 에 70 V, 140 V)")
     P = _motor_inputs("l2t_")
@@ -216,6 +219,7 @@ def _transient():
           "예제 2 를 고르면 극점 −75.29 ± j281.63, ζ = 0.258 (교재 값)")
 
 
+@st.fragment
 def _control_basics():
     ref("2.5 제어 시스템 — 개루프·폐루프, P·I·PI 제어기, 정상상태 오차, 안정성(위상 여유)·대역폭")
     P = _motor_inputs("l2c_", show=False)
@@ -229,6 +233,7 @@ def _control_basics():
     res = {}
     for kind, col in (("P", "#e76f51"), ("I", "#2a9d8f"), ("PI", "#264653")):
         t, i, v = _rl(_pt(P), kind, Kp, max(Ki, 1e-9))
+        t, i, v = t[::4], i[::4], v[::4]
         res[kind] = i[-1]
         fig.add_trace(go.Scatter(x=t * 1000, y=i, name=f"{kind} 제어", line=dict(color=col)), 1, 1)
         fig.add_trace(go.Scatter(x=t * 1000, y=v, name=f"{kind}", line=dict(color=col), showlegend=False), 1, 2)
@@ -309,6 +314,7 @@ def _control_basics():
           "Kp 를 키우면 교차 주파수(대역폭)가 커져 응답이 빨라짐")
 
 
+@st.fragment
 def _current():
     ref("2.6 전류 제어기 — 극점-영점 상쇄 PI (Kp = La·ωcc, Ki = Ra·ωcc), 역기전력 전향 보상, 적분기 누적 방지(Anti wind-up)")
     P = _motor_inputs("l2i_")
@@ -322,8 +328,8 @@ def _current():
     lim_on = c[0].checkbox("전압 한계 적용", False, key="l2i_lim",
                            help="끄면 교재 Simulink 결과처럼 전압 제한이 없는 경우. 켜면 인가 전압이 ±한계로 잘려 적분기 누적(wind-up)을 볼 수 있습니다.")
     Vlim = c[1].slider("전압 한계 [V]", 20.0, 200.0, 140.0, 5.0, key="l2i_vl", disabled=not lim_on) if lim_on else 1e6
-    r = _sim_cur(_pt(P), bw, rpm, iref, ff, aw, Vlim)
-    r2 = _sim_cur(_pt(P), bw * (2 if bw < 2000 else 0.5), rpm, iref, ff, aw, Vlim)
+    r = thin(_sim_cur(_pt(P), bw, rpm, iref, ff, aw, Vlim), 3000)
+    r2 = thin(_sim_cur(_pt(P), bw * (2 if bw < 2000 else 0.5), rpm, iref, ff, aw, Vlim), 3000)
     fig = make_subplots(rows=1, cols=2, subplot_titles=("전기자 전류", "인가 전압"))
     fig.add_trace(go.Scatter(x=r["t"] * 1000, y=r["istar"], name="지령 i*", line=dict(dash="dot", color="#999")), 1, 1)
     fig.add_trace(go.Scatter(x=r["t"] * 1000, y=r["ia"], name=f"{bw} Hz", line=dict(color="#d62828")), 1, 1)
@@ -360,6 +366,7 @@ def _current():
           "전압 한계를 켜고(예: 80 V) 누적 방지를 끄면 지령이 0 으로 돌아갈 때 전류가 한동안 내려오지 않음 (wind-up)")
 
 
+@st.fragment
 def _speed():
     ref("2.7 속도 제어기 — PI 속도 제어 (전류 제어 대역폭의 1/5 이하), 50 Hz / 100 Hz 비교, IP 제어기와 혼합 제어기(α)")
     P = _motor_inputs("l2w_")
@@ -377,8 +384,8 @@ def _speed():
     rows = []
     book = scen.startswith("교재")
     for name, a, col in runs:
-        r = _sim_spd(_pt(P), bw, a, 2500 if book else rpm, 0.0 if book else TLs, 0.05 if book else 0.01,
-                     P["I"] if book else None, 0.2 if book else 0.3, 1.0 if book else 0.15)
+        r = thin(_sim_spd(_pt(P), bw, a, 2500 if book else rpm, 0.0 if book else TLs, 0.05 if book else 0.01,
+                     P["I"] if book else None, 0.2 if book else 0.3, 1.0 if book else 0.15), 2500)
         fig.add_trace(go.Scatter(x=r["t"], y=r["w"] * RPM, name=name, line=dict(color=col, dash=None if name == "현재 설정" else "dot")), 1, 1)
         fig.add_trace(go.Scatter(x=r["t"], y=P["K"] * r["ia"], name=name, line=dict(color=col, dash=None if name == "현재 설정" else "dot"), showlegend=False), 1, 2)
         tl = 1.0 if book else 0.15
@@ -409,8 +416,8 @@ def _speed():
     st.plotly_chart(lstyle(figb, height=340), width="stretch", key="l2_spd_bode")
     st.caption(f"감쇠비 ζ = √(ωcs/ωpi)/2 = √5/2 = {zeta:.3f} (과감쇠) 인데도 영점 항 때문에 오버슈트가 생김.")
     st.markdown("##### 같은 오버슈트가 되도록 IP 제어기 대역폭을 키우면 (교재: 약 5.44 배)")
-    r_pi = _sim_spd(_pt(P), bw, 1.0, 1000, 3.0, 0.01, None, 0.3, 0.15)
-    r_ip = _sim_spd(_pt(P), bw * 5.44, 0.0, 1000, 3.0, 0.01, None, 0.3, 0.15)
+    r_pi = thin(_sim_spd(_pt(P), bw, 1.0, 1000, 3.0, 0.01, None, 0.3, 0.15))
+    r_ip = thin(_sim_spd(_pt(P), bw * 5.44, 0.0, 1000, 3.0, 0.01, None, 0.3, 0.15))
     figi = go.Figure()
     figi.add_trace(go.Scatter(x=r_pi["t"], y=r_pi["w"] * RPM, name=f"PI ({bw} Hz)"))
     figi.add_trace(go.Scatter(x=r_ip["t"], y=r_ip["w"] * RPM, name=f"IP ({bw * 5.44:.0f} Hz)"))
@@ -421,6 +428,7 @@ def _speed():
           "대역폭 50 → 100 Hz 로 키우면 빨라지고 부하 투입 시 속도 저하도 줄어듦")
 
 
+@st.fragment
 def _chopper():
     ref("2.8 전력 변환 장치 — 1상한 초퍼, 4상한 초퍼(H-브리지) 바이폴라·유니폴라 PWM / 2.9.4 초퍼 구동 시스템 (5 kHz, 유니폴라)")
     P = _motor_inputs("l2p_", show=False)
@@ -471,7 +479,7 @@ def _chopper():
     st.markdown("##### 지령 Va* 를 +Vdc 에서 −Vdc 로 천천히 바꿀 때의 출력 전압 (교재 그림 아래쪽)")
     figr = make_subplots(rows=1, cols=2, subplot_titles=("바이폴라", "유니폴라"))
     for col, m in ((1, "바이폴라"), (2, "유니폴라")):
-        tr_, vr_, v_ = ch2.chopper_ramp(m, P["V"], 1000)
+        tr_, vr_, v_ = ch2.chopper_ramp(m, P["V"], 1000, periods=40, pts=80)
         figr.add_trace(go.Scatter(x=tr_ * 1000, y=v_, name=f"{m} va", line=dict(width=1, shape="hv")), 1, col)
         figr.add_trace(go.Scatter(x=tr_ * 1000, y=vr_, name="평균 전압 Va*", line=dict(color="#d62828", width=2)), 1, col)
     figr.update_xaxes(title_text="시간 [ms]")
@@ -483,11 +491,12 @@ def _chopper():
     dfsw = c[1].selectbox("스위칭 주파수", [2000, 5000, 10000], index=1, format_func=lambda x: f"{x // 1000} kHz", key="l2d_f")
     dbw = c[2].selectbox("속도 제어 대역폭", [20, 50], index=1, format_func=lambda x: f"{x} Hz", key="l2d_bw")
     d = _drive(_pt(TEXTBOOK), dmode, dfsw, dbw)
+    dv = thin(d, 4000)
     figd = make_subplots(rows=1, cols=2, subplot_titles=("속도 지령·속도 [r/min]", "전기자 전류 Ia [A] · 토크 Te [N·m]"))
-    figd.add_trace(go.Scatter(x=d["t"], y=np.where(d["t"] >= 0.05, 2500, 0), name="지령", line=dict(dash="dash", color="#999")), 1, 1)
-    figd.add_trace(go.Scatter(x=d["t"], y=d["w"] * RPM, name="속도"), 1, 1)
-    figd.add_trace(go.Scatter(x=d["t"], y=d["ia"], name="Ia", line=dict(width=1)), 1, 2)
-    figd.add_trace(go.Scatter(x=d["t"], y=d["Te"], name="Te", line=dict(width=1)), 1, 2)
+    figd.add_trace(go.Scatter(x=dv["t"], y=np.where(dv["t"] >= 0.05, 2500, 0), name="지령", line=dict(dash="dash", color="#999")), 1, 1)
+    figd.add_trace(go.Scatter(x=dv["t"], y=dv["w"] * RPM, name="속도"), 1, 1)
+    figd.add_trace(go.Scatter(x=dv["t"], y=dv["ia"], name="Ia", line=dict(width=1)), 1, 2)
+    figd.add_trace(go.Scatter(x=dv["t"], y=dv["Te"], name="Te", line=dict(width=1)), 1, 2)
     figd.update_xaxes(title_text="시간 [s]")
     st.plotly_chart(lstyle(figd, height=320), width="stretch", key="l2_drive")
     z = (d["t"] >= 0.1) & (d["t"] <= 0.1 + 3 / dfsw)

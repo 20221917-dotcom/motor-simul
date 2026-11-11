@@ -29,6 +29,7 @@ def _im_inputs(key):
 
 
 # ---------------------------------------------------------------- 4.1 아라고의 원판 · 4.1.1 구조·철손
+@st.fragment
 def _structure():
     ref("4.1 아라고의 원판 (유도 전동기의 기본 개념) · 4.1.1 구조적 특성 — 철손 (히스테리시스·와전류), 분포권")
     st.markdown("##### 아라고의 원판: 자석을 돌리면 구리 원판이 와전류 때문에 조금 느리게 따라 돎")
@@ -122,6 +123,7 @@ def _mmf_fig(mode, poles, unb, f):
     return fig
 
 
+@st.fragment
 def _rotating():
     ref("4.1.2 회전 원리 — 120° 간격 3상 권선 + 120° 위상차 전류 → 크기 일정한 회전자계, 동기 속도 ns = 120f/P")
     c = st.columns(4)
@@ -167,6 +169,7 @@ def _rotating():
     link("유도전동기 시뮬레이터: 실시간 회전자계와 슬립", "induction")
 
 
+@st.fragment
 def _emf():
     ref("4.1.3 고정자 유기 기전력 (E = 4.44 f N φ Kw) · 회전자 유기 기전력과 주파수 (슬립에 비례) · 회전자 등가회로 변환")
     c = st.columns(4)
@@ -210,6 +213,7 @@ def _emf():
     info_metric(c[2], "고정자 주파수로 변환 E/(Rr/s + jXr)", f"{abs(Ir2):.2f} A", "크기가 같음 → 등가회로에 Rr/s 로 그림")
 
 
+@st.fragment
 def _equivalent():
     ref("4.1.3 등가회로 · 4.1.4 특성 — 상당 등가회로, 전력 흐름 (공극 전력·동손·기계적 출력), 역률·효율")
     M = _im_inputs("l4e_")
@@ -237,6 +241,7 @@ def _equivalent():
           "속도를 낮추면(부하 증가) 전류가 크게 늘고 역률은 좋아짐, 기동(s = 1)에서는 출력 0")
 
 
+@st.fragment
 def _characteristics():
     ref("4.1.4 유도 전동기의 특성 · 4.1.5 동작 모드 — 토크–속도 곡선, 최대 토크, 안정 운전점, 전동기·발전기·플러깅 모드")
     M = _im_inputs("l4c_")
@@ -312,6 +317,7 @@ def _characteristics():
           "동기 속도보다 빠르면 토크가 음(발전기), 역회전 중이면 플러깅(제동)")
 
 
+@st.fragment
 def _rotor_types():
     ref("4.1.6 회전자 구조에 따른 특성 — 회전자 저항의 영향, 심구형·2중 농형 회전자 (기동 시 고저항, 운전 시 저저항)")
     M = dict(IM)
@@ -354,6 +360,7 @@ def _rotor_types():
           "운전 때(1~3 Hz)는 안쪽 저저항 도체가 일함 → 두 장점을 모두 얻음")
 
 
+@st.fragment
 def _tests():
     ref("4.1.7 유도 전동기의 정수 측정 — 고정자 저항 측정, 무부하 시험, 구속 시험")
     st.markdown("기준 전동기(파라미터를 알고 있는 전동기)로 세 가지 시험을 **가상으로** 해서 측정값을 만들고, 교재 방법으로 등가회로 정수를 다시 구합니다. "
@@ -389,6 +396,7 @@ def _regions(Ilim):
     return ch4.speed_regions(npts=70, I_lim=Ilim)
 
 
+@st.fragment
 def _speed_control():
     ref("4.1.8 유도 전동기의 속도 제어 — 고정자 전압 제어, 회전자 저항 제어, 주파수 제어, V/f 일정 제어 · 4.1.9 속도 영역")
     M = dict(IM)
@@ -485,6 +493,7 @@ def _speed_control():
     link("유도전동기 시뮬레이터: V/f · 벡터 제어 실시간", "induction")
 
 
+@st.fragment
 def _synchronous():
     ref("4.2 동기 전동기 — 원통형·돌극형, 등가회로, 페이저도(부족·과여자), 토크각 δ, 릴럭턴스 토크, V 곡선, 기동 방법")
     c = st.columns(5)

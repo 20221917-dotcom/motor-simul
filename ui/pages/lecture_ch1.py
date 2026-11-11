@@ -15,6 +15,18 @@ RPM = 60 / (2 * math.pi)
 
 
 @st.cache_data(max_entries=64, show_spinner=False)
+def _force_curves(N, i):
+    xg = np.linspace(0.2, 5.0, 60)
+    F = [ch1.gap_force(i, x * 1e-3, N=N) for x in xg]
+    return xg, F, ch1.gap_force_linear(i, xg * 1e-3, N=N), ch1.lambda_i(i, N=N, g=xg * 1e-3) / i
+
+
+@st.cache_data(max_entries=64, show_spinner=False)
+def _paths(i0, x1, x2):
+    return ch1.linear_machine_paths(i0, x1 * 1e-3, min(x2, x1 - 0.1) * 1e-3)
+
+
+@st.cache_data(max_entries=64, show_spinner=False)
 def _rel_sweep(delta):
     ws = 2 * math.pi * 10
     return [ch1.reluctance_avg(10.0, ws, r * ws, math.radians(delta), 0.01, cycles=60) for r in np.linspace(0, 2, 81)]
@@ -30,6 +42,7 @@ def _startup(kind, V, T0, J):
     return ch1.startup(kind, V, 0.4058, 0.5, T0, 1000 / RPM, J)
 
 
+@st.fragment
 def _principle():
     ref("1.1 전동기의 동작 원리 — 로렌츠의 힘 F = I·l·B, 두 자석의 상호 작용 (자석–자석, 자석–자성체), 직류·교류(동기·유도) 전동기의 자석")
     st.markdown("##### ① 로렌츠의 힘: 자계 안의 전류가 흐르는 도체")
@@ -66,6 +79,7 @@ def _principle():
           "교류 전동기는 고정자 자석(회전자계)이 돌고 회전자 자석이 같은 속도로 따라 돎: 동기 = 회전자 자석이 직류, 유도 = 회전자 자석이 유도 전류")
 
 
+@st.fragment
 def _magnetic():
     ref("1.2.1 자기 에너지 — 기자력과 자속, λ-i 특성(선형·포화 영역), 인덕턴스, 자기 에너지와 코에너지")
     c = st.columns(4)
@@ -116,16 +130,14 @@ def _magnetic():
                "유도 전류는 언제나 자속 변화를 방해하는 방향 (렌츠의 법칙).")
 
 
+@st.fragment
 def _force_reluctance():
     ref("1.2.2 직선 운동 기계 · 1.2.3 회전 기계 — 힘은 인덕턴스가 커지는(자기 저항이 작아지는) 방향, 릴럭턴스 토크와 평균 토크 조건")
     st.markdown("##### ① 직선 운동 기계 (단일 여자): 운동자에 걸리는 힘 F = ∂W′/∂x")
     c = st.columns(3)
     N = c[0].slider("권수 N", 50, 500, 200, 10, key="l1f_N")
     i = c[1].slider("전류 i [A]", 0.5, 20.0, 3.0, 0.5, key="l1f_i")
-    xg = np.linspace(0.2, 5.0, 60)
-    F = [ch1.gap_force(i, x * 1e-3, N=N) for x in xg]
-    Fl = ch1.gap_force_linear(i, xg * 1e-3, N=N)
-    L = ch1.lambda_i(i, N=N, g=xg * 1e-3) / i
+    xg, F, Fl, L = _force_curves(N, i)
     fig = make_subplots(rows=1, cols=2, subplot_titles=("공극에 따른 인덕턴스 L(x)", "운동자에 걸리는 힘 (− = 공극을 줄이는 쪽)"))
     fig.add_trace(go.Scatter(x=xg, y=L * 1e3, name="L [mH]"), 1, 1)
     fig.add_trace(go.Scatter(x=xg, y=F, name="힘 (포화 포함)"), 1, 2)
@@ -141,7 +153,7 @@ def _force_reluctance():
     i0 = c[0].slider("코일 전류 i [A]", 0.5, 10.0, 3.0, 0.5, key="l1p_i")
     x1 = c[1].slider("이동 전 공극 x1 [mm]", 0.5, 4.0, 2.0, 0.1, key="l1p_x1")
     x2 = c[2].slider("이동 후 공극 x2 [mm]", 0.2, 3.5, 1.0, 0.1, key="l1p_x2")
-    pth = ch1.linear_machine_paths(i0, x1 * 1e-3, min(x2, x1 - 0.1) * 1e-3)
+    pth = _paths(i0, x1, x2)
     fig = make_subplots(rows=1, cols=2, subplot_titles=("매우 빨리 이동 (λ 일정: A → C → B)", "매우 느리게 이동 (i 일정: A → B)"))
     for col, key in ((1, "fast"), (2, "slow")):
         fig.add_trace(go.Scatter(x=pth["i"], y=pth["lam1"], name="x = x1", line=dict(color="#1d4ed8"), showlegend=col == 1), 1, col)
@@ -204,6 +216,7 @@ def _force_reluctance():
           "δ 를 바꾸면 평균 토크가 sin2δ 로 변하고, 회전자가 원통형(L2 = 0)이면 토크가 없음")
 
 
+@st.fragment
 def _double():
     ref("1.2.3 이중 여자 기기·원통형 기기 — T = −is·ir·M·sinθ, 평균 토크 조건 ωm = ωs ± ωr (직류·동기·유도 전동기)")
     c = st.columns([2, 3])
@@ -242,6 +255,7 @@ def _double():
           "θ0 를 바꾸면 평균 토크 크기가 변함 (브러시 위치·부하각)")
 
 
+@st.fragment
 def _load():
     ref("1.3 부하 시스템 — 운동 방정식 J·dω/dt = Te − TL − Bω, 부하 토크 종류, 기어·직선 운동의 등가 관성")
     c = st.columns(4)
@@ -302,6 +316,7 @@ def _load():
           "감속비 n 을 키우면 부하 관성이 n² 로 작아져 보이고 토크도 1/n 로 작아짐 (대신 속도는 n 배 필요)")
 
 
+@st.fragment
 def _quadrant():
     ref("1.3.3 전동기의 동작 모드 — 전동기 모드/발전기(제동) 모드, 4상한 운전 (엘리베이터 예)")
     c = st.columns(5)
@@ -334,6 +349,7 @@ def _quadrant():
           "균형추가 카보다 무거우면 토크 부호가 바뀜")
 
 
+@st.fragment
 def _system():
     ref("1.4 전동기 구동 시스템의 구성 — 전원, 전력 변환 장치, 전동기, 제어기, 센서")
     st.plotly_chart(blocks([("전원<br>(단상·3상 교류)", "#fff3d6"), ("전력 변환 장치<br>정류기·초퍼·인버터", "#fdf0e6"),

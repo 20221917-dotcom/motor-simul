@@ -8,7 +8,7 @@ from plotly.subplots import make_subplots
 
 from lectures import ch3
 from ui.lecture_draw import bldc_inverter
-from ui.pages.lecture_common import check, link, lstyle, ref
+from ui.pages.lecture_common import check, link, lstyle, ref, thin
 from ui.plots import info_metric
 
 COL = {"a": "#d62828", "b": "#2a9d8f", "c": "#1d4ed8"}
@@ -24,6 +24,7 @@ def _drive(rpm, ctrl, method, TL):
     return ch3.simulate_bldc_drive(rpm, ctrl, method, TL=TL)
 
 
+@st.fragment
 def _shapes():
     ref("3.1 BLDC 전동기의 구조 · BLDC 와 영구자석 동기 전동기의 비교 — 사다리꼴 역기전력 + 120° 사각파 전류 vs 정현파 + 정현파")
     c = st.columns(3)
@@ -48,6 +49,7 @@ def _shapes():
           "짝이 안 맞으면(정현파 역기전력에 사각파 전류 등) 토크가 60° 마다 출렁임, 평탄부가 120° 보다 좁아도 리플")
 
 
+@st.fragment
 def _six_step():
     ref("3.2 3상 BLDC 전동기의 기본 구동 방법 — 홀 센서 3개로 6구간 검출, 2상 여자(120° 통전), 6-스텝 구동")
     c = st.columns([1, 2])
@@ -90,7 +92,7 @@ def _six_step():
         figh.add_vline(x=deg, line=dict(color="#16a34a", width=2))
         figh.update_xaxes(title_text="θe [°]", dtick=60)
         st.plotly_chart(lstyle(figh, height=260), width="stretch", key="l3_hallv")
-    x = np.linspace(0, 360, 1441)
+    x = np.linspace(0, 360, 721)
     xr = np.radians(x)
     fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.06,
                         subplot_titles=("홀 센서 신호", "역기전력 (사다리꼴)", "이상적인 상전류 (120° 통전)"))
@@ -112,6 +114,7 @@ def _six_step():
           "홀 신호 3개의 조합이 60° 마다 바뀌어 6구간을 구별")
 
 
+@st.fragment
 def _commutation():
     ref("3.3 모델링·상전류 전환 시 토크 리플 — 전환 전류의 증가율과 감소율이 달라 비전환 전류가 출렁임 (운전 주파수 한 주기에 6번)")
     c = st.columns(4)
@@ -154,6 +157,7 @@ def _commutation():
     link("BLDC 전동기 시뮬레이터 (실시간 6스텝, 속도·전류 제어)", "bldc")
 
 
+@st.fragment
 def _pwm():
     ref("3.4 제어 — 속도 제어(PI), 전류 제어, PWM 기법: 바이폴라, 유니폴라(H_PWM-L_ON, H_ON-L_PWM, PWM_ON, ON_PWM)")
     c = st.columns(4)
@@ -194,7 +198,7 @@ def _pwm():
                       help="전압(듀티) 제어: 속도 PI 출력이 바로 PWM 듀티 → 간단하지만 지령이 크게 바뀌면 과전류. 전류 제어: 속도 PI → 직류 전류 지령 → 전류 PI → 듀티")
     rpmr = c[1].slider("속도 지령 [rpm]", 500, 3500, 2000, 100, key="l3d_rpm")
     TLd = c[2].slider("0.08 s 에 거는 부하 [N·m]", 0.0, 0.3, 0.1, 0.01, key="l3d_tl")
-    d = _drive(rpmr, ctrl, "hpwm", TLd)
+    d = thin(_drive(rpmr, ctrl, "hpwm", TLd), 4000)
     figd = make_subplots(rows=2, cols=2, shared_xaxes=True, subplot_titles=("속도 [rpm]", "토크 [N·m]", "a상 역기전력 [V]", "상전류 [A]"))
     figd.add_trace(go.Scatter(x=d["t"], y=d["rpm"], name="속도"), 1, 1)
     figd.add_hline(y=rpmr, line=dict(dash="dot", color="#999"), row=1, col=1)
@@ -207,6 +211,7 @@ def _pwm():
     info_metric(st.columns(3)[0], "최대 상전류", f"{np.max(np.abs(d['i'])):.1f} A", "전류 제어는 10 A 로 제한" if ctrl == "전류 제어" else "전류 제한 없음")
 
 
+@st.fragment
 def _sensorless():
     ref("3.5 센서리스 제어 — 개방 상 단자 전압으로 역기전력 영점(ZCP) 검출 → 30° 뒤 상 전환")
     c = st.columns(3)
