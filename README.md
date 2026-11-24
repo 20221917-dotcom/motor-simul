@@ -1,5 +1,7 @@
 # 전동기 학습용 시뮬레이터
 
+배포 주소: https://motor-simul-deftje9kdsxbgkxvv2hjck.streamlit.app/
+
 타여자·분권·직권·복권(가동/차동, 장분권) DC 전동기의 원리, 정상상태 특성, 동특성, 속도 제어를
 파라미터를 바꿔 가며 확인하는 Streamlit 앱입니다.
 
